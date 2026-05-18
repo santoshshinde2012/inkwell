@@ -1,0 +1,24 @@
+node_modules
+.next
+.vercel
+.turbo
+dist
+build
+out
+
+# Generated artifacts
+packages/backend/.next
+packages/extension/dist
+packages/shared/dist
+**/*.tsbuildinfo
+
+# Lockfiles
+pnpm-lock.yaml
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Frozen
+PROJECT_BRIEF.md

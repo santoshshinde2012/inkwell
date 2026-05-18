@@ -1,0 +1,15 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+
+  "framework": "nextjs",
+
+  "installCommand": "pnpm install --frozen-lockfile",
+
+  "buildCommand": "pnpm --filter @inkwell/shared build && pnpm --filter @inkwell/backend exec next build",
+
+  "outputDirectory": "packages/backend/.next",
+
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD ./packages/shared ./packages/backend ./vercel.json ./pnpm-lock.yaml ./pnpm-workspace.yaml ./package.json ./tsconfig.base.json",
+
+  "regions": ["iad1"]
+}

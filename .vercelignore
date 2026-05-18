@@ -1,0 +1,16 @@
+# Vercel only deploys the backend. Skip everything else to keep the upload
+# small and the build cache clean.
+
+packages/extension/
+PROJECT_BRIEF.md
+
+# Dev / env artifacts.
+**/.env.local
+**/.env.development.local
+**/.env.production.local
+
+# Build outputs from prior local runs (rebuilt on Vercel).
+packages/backend/.next/
+packages/extension/dist/
+**/dist/
+**/.turbo/

@@ -1,0 +1,30 @@
+UNLICENSED — All Rights Reserved
+
+Copyright (c) 2026 Inkwell project authors.
+
+This source code is provided for review and personal use only. No part of
+this repository may be copied, modified, distributed, sublicensed,
+sold, or used in any commercial context without prior written
+permission from the copyright holder.
+
+You may not:
+  - Redistribute this code or compiled artifacts.
+  - Use this code in any product or service offered to third parties.
+  - Use this code or its outputs to train or fine-tune machine learning
+    models without express written permission.
+
+You may:
+  - Read and study the code for educational purposes.
+  - Run the code locally on your own device for personal evaluation.
+  - Submit pull requests against the original repository.
+
+If you would like to use this code under more permissive terms, please
+open an issue or contact the maintainers.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

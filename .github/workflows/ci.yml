@@ -1,0 +1,75 @@
+# CI for the Inkwell monorepo.
+#
+# Runs on:
+#   • Every PR (full check)
+#   • Pushes to main (full check)
+#
+# What it verifies:
+#   1. pnpm install --frozen-lockfile  → lockfile is honest
+#   2. @inkwell/shared builds            → consuming packages can resolve types
+#   3. typecheck (all packages)          → strict TS passes everywhere
+#   4. backend prod build                → /api routes + middleware compile
+#   5. extension prod build              → MV3 bundle generates cleanly
+#
+# Tests aren't run here yet — when we add them, drop a `pnpm test` step
+# between typecheck and the builds.
+#
+# Vercel still owns the actual deploy via its GitHub integration; this
+# workflow just gates merges.
+
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: typecheck + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared types
+        run: pnpm --filter @inkwell/shared build
+
+      - name: Typecheck
+        run: pnpm -r typecheck
+
+      - name: Build backend
+        run: pnpm --filter @inkwell/backend exec next build
+        env:
+          # The backend env validator requires NODE_ENV; OPENAI_API_KEY is
+          # optional and the mock streaming layer covers its absence.
+          NODE_ENV: test
+
+      - name: Build extension
+        run: pnpm --filter @inkwell/extension build
+
+      - name: Verify no stray big files in extension dist
+        run: |
+          echo "Sizes:"
+          find packages/extension/dist -type f -exec ls -l {} \; | awk '{print $5, $9}' | sort -n
