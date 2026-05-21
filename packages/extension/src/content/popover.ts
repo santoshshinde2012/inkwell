@@ -14,7 +14,9 @@
 //     at the cursor; Grammar/Rewrite replace the field) — and copied. In
 //     selection / blank mode it is copy-only: we never write to the page.
 //   • Accessible. role="dialog" + aria-labelledby + aria-live="polite" on
-//     the streaming preview. Focus trapped inside the popover.
+//     the streaming preview. Non-modal (aria-modal="false") — initial focus
+//     lands on the primary input, and focus returns to the source field on
+//     a successful insert. Esc closes; Cmd/Ctrl+Enter generates.
 //   • Dark-mode aware via prefers-color-scheme.
 
 import {
@@ -49,9 +51,18 @@ import { historyStore, type NewHistoryEntry } from "../lib/history";
 import { readText, writeText } from "./editable";
 import type { SiteAdapter } from "./adapters";
 
-// The "To" language picker value: a real language id, or one of two
-// relative choices ("match" the source, or a "bilingual" reply).
-type TargetChoice = "match" | "bilingual" | LanguageId;
+import {
+  loadOptsExpanded,
+  saveOptsExpanded,
+  loadLastUsed,
+  saveLastUsed,
+  isValidAction,
+  isValidTone,
+  isValidModel,
+  isValidSourceLang,
+  isValidTargetChoice,
+  type TargetChoice,
+} from "../lib/ui-state";
 
 // Where the text Inkwell works on comes from. This is what makes the
 // popover usable both inside editable fields AND on read-only page text:
@@ -86,12 +97,17 @@ const SVG_ATTRS =
 const ICON_REPLY = `<svg ${SVG_ATTRS}><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>`;
 const ICON_GRAMMAR = `<svg ${SVG_ATTRS}><path d="m6 16 6-12 6 12"/><path d="M8 12h8"/><path d="m16 20 2 2 4-4"/></svg>`;
 const ICON_REWRITE = `<svg ${SVG_ATTRS}><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>`;
-const ICON_SPARKLES = `<svg ${SVG_ATTRS}><path d="M9.94 14.5A2 2 0 0 0 8.5 13.06L2.37 11.48a.5.5 0 0 1 0-.96L8.5 8.94A2 2 0 0 0 9.94 7.5l1.58-6.13a.5.5 0 0 1 .96 0L14.06 7.5A2 2 0 0 0 15.5 8.94l6.13 1.58a.5.5 0 0 1 0 .96L15.5 13.06a2 2 0 0 0-1.44 1.44l-1.58 6.13a.5.5 0 0 1-.96 0Z"/><path d="M20 3v4"/><path d="M22 5h-4"/></svg>`;
+// The Inkwell brand mark — a filled ink drop. Matches icons/logo.svg.
+const ICON_DROP = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4.88C13.13 6.94 16.13 9 16.13 11.44A5.25 5.25 0 1 1 7.88 11.44C7.88 9 10.88 6.94 12 4.88Z"/></svg>`;
 const ICON_X = `<svg ${SVG_ATTRS}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`;
 const ICON_CHECK = `<svg ${SVG_ATTRS}><path d="M20 6 9 17l-5-5"/></svg>`;
 const ICON_REFRESH = `<svg ${SVG_ATTRS}><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>`;
 const ICON_SQUARE = `<svg ${SVG_ATTRS}><rect width="14" height="14" x="5" y="5" rx="1.5"/></svg>`;
 const ICON_ARROW_RIGHT = `<svg ${SVG_ATTRS}><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>`;
+const ICON_CHEVRON_DOWN = `<svg ${SVG_ATTRS}><path d="m6 9 6 6 6-6"/></svg>`;
+// Lucide "sliders-horizontal" — signifies "settings / adjust" in the
+// Options disclosure. Reads instantly even at 14px.
+const ICON_SLIDERS = `<svg ${SVG_ATTRS}><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><circle cx="14" cy="4" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="16" cy="20" r="2"/></svg>`;
 const ICON_COPY = `<svg ${SVG_ATTRS}><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
 const ICON_TRANSLATE = `<svg ${SVG_ATTRS}><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>`;
 
@@ -143,7 +159,8 @@ const SOURCE_PLACEHOLDERS: Record<Action, string> = {
   reply: "Paste or type the message you're replying to…",
   translate: "Paste or type the customer's message to translate…",
   grammar: "Paste or type the text whose grammar you want fixed…",
-  rewrite: "Paste or type the text to rewrite (or leave blank and describe it below)…",
+  rewrite:
+    "Paste or type the text to rewrite (or leave blank and add a brief in Options)…",
 };
 
 // ---------------------------------------------------------------------------
@@ -166,8 +183,21 @@ const POPOVER_STYLES = `
     from { transform: rotate(0deg); }
     to   { transform: rotate(360deg); }
   }
+  @keyframes inkwell-thinking {
+    0%, 80%, 100% { opacity: .25; transform: translateY(0); }
+    40%           { opacity: 1;   transform: translateY(-3px); }
+  }
+  @keyframes inkwell-fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
 
   .pop {
+    /* One modern, professional UI font for the whole popover. Every control
+       below pulls from this variable so nothing silently falls back to a UA
+       default — an unstyled <textarea>, for one, renders in monospace. */
+    --inkwell-font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+      Roboto, "Helvetica Neue", Arial, sans-serif;
     pointer-events: auto;
     position: fixed;
     width: 420px;
@@ -184,11 +214,17 @@ const POPOVER_STYLES = `
       0 12px 32px -4px rgba(0, 0, 0, 0.16),
       0 24px 56px -12px rgba(0, 0, 0, 0.22);
     overflow: hidden;
-    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-      "Helvetica Neue", Arial, sans-serif;
+    font-family: var(--inkwell-font);
+    font-size: 13px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    caret-color: #6366f1;
     animation: inkwell-pop-in 160ms cubic-bezier(.2,.8,.2,1) both;
   }
   .pop:focus { outline: none; }
+  .pop ::selection { background: rgba(99, 102, 241, 0.22); }
 
   /* Header ----------------------------------------------------- */
   .head {
@@ -243,7 +279,8 @@ const POPOVER_STYLES = `
     gap: 5px;
     padding: 7px 4px; border-radius: 7px;
     background: transparent; color: #52525b;
-    font: 500 11.5px/1 inherit;
+    font-family: var(--inkwell-font);
+    font-size: 11.5px; font-weight: 500; line-height: 1;
     white-space: nowrap; overflow: hidden;
     cursor: pointer;
     transition: background 120ms, color 120ms, box-shadow 120ms;
@@ -269,7 +306,9 @@ const POPOVER_STYLES = `
     padding: 8px 10px;
     border: 1px solid #e4e4e7; border-radius: 8px;
     background: #ffffff; color: #18181b;
-    font: 13px/1.45 inherit; resize: vertical;
+    font-family: var(--inkwell-font);
+    font-size: 13px; line-height: 1.45;
+    resize: vertical;
     transition: border-color 120ms, box-shadow 120ms;
   }
   .source:focus {
@@ -277,6 +316,73 @@ const POPOVER_STYLES = `
     box-shadow: 0 0 0 3px rgba(99,102,241,.18);
   }
   .source::placeholder { color: #a1a1aa; }
+
+  /* Options disclosure — collapses language + tone/model + instruction so
+     the popover's primary surface is text in → result out. The whole
+     disclosure is one bordered card; the toggle is its borderless header,
+     and the body slides open inside the same frame. A grid-template-rows
+     0fr → 1fr animation gives a smooth, content-aware expand without any
+     hard-coded max-height. */
+  .opts {
+    margin-bottom: 10px;
+    border: 1px solid #e4e4e7; border-radius: 10px;
+    background: #ffffff;
+    transition: border-color 160ms;
+  }
+  .opts:hover { border-color: #d4d4d8; }
+  .opts-toggle {
+    appearance: none;
+    width: 100%;
+    display: flex; align-items: center; gap: 9px;
+    padding: 10px 12px;
+    background: transparent; border: 0; border-radius: 10px;
+    color: #52525b; cursor: pointer;
+    font-family: var(--inkwell-font);
+    font-size: 12px; font-weight: 500; line-height: 1.3;
+    text-align: left;
+    transition: color 120ms;
+  }
+  .opts-toggle:hover { color: #18181b; }
+  .opts-toggle:focus-visible {
+    outline: 2px solid #6366f1; outline-offset: -2px;
+  }
+  .opts-icon, .opts-chevron {
+    display: inline-flex; align-items: center;
+    color: #a1a1aa; flex-shrink: 0;
+    transition: color 120ms;
+  }
+  .opts-icon svg, .opts-chevron svg { width: 14px; height: 14px; }
+  .opts-toggle:hover .opts-icon,
+  .opts-toggle:hover .opts-chevron { color: #71717a; }
+  .opts-text {
+    flex: 1; min-width: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .opts-chevron {
+    transition: transform 260ms cubic-bezier(.4,0,.2,1), color 120ms;
+  }
+  .opts-toggle[aria-expanded="true"] .opts-chevron { transform: rotate(180deg); }
+
+  .opts-body {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 260ms cubic-bezier(.4,0,.2,1);
+  }
+  .opts-toggle[aria-expanded="true"] + .opts-body {
+    grid-template-rows: 1fr;
+  }
+  .opts-inner {
+    min-height: 0; overflow: hidden;
+    padding: 12px 12px 2px;
+    border-top: 1px solid transparent;
+    transition: border-top-color 200ms;
+  }
+  .opts-toggle[aria-expanded="true"] + .opts-body .opts-inner {
+    border-top-color: #ececef;
+  }
+  /* The wrapped rows already provide their own bottom margin — drop the
+     final margin so the card closes flush. */
+  .opts-inner > :last-child { margin-bottom: 0; }
 
   /* Control rows — the language pair and the tone/model settings.
      Every configuration control uses the same .lang-field + .lang-select. */
@@ -302,7 +408,9 @@ const POPOVER_STYLES = `
     border: 1px solid #e4e4e7; border-radius: 8px;
     background-color: #ffffff; color: #18181b;
     padding: 8px 28px 8px 10px;
-    font: 500 12.5px/1.3 inherit; cursor: pointer;
+    font-family: var(--inkwell-font);
+    font-size: 12.5px; font-weight: 500; line-height: 1.3;
+    cursor: pointer;
     background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888890' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
     background-repeat: no-repeat;
     background-position: right 9px center;
@@ -328,7 +436,9 @@ const POPOVER_STYLES = `
     padding: 8px 10px;
     border: 1px solid #e4e4e7; border-radius: 8px;
     background: #ffffff; color: #18181b;
-    font: 13px/1.45 inherit; resize: vertical;
+    font-family: var(--inkwell-font);
+    font-size: 13px; line-height: 1.45;
+    resize: vertical;
     transition: border-color 120ms, box-shadow 120ms;
   }
   .instruction:focus {
@@ -362,7 +472,8 @@ const POPOVER_STYLES = `
     color: #18181b;
     white-space: pre-wrap;
     word-break: break-word;
-    font: 13px/1.6 inherit;
+    font-family: var(--inkwell-font);
+    font-size: 13px; line-height: 1.6;
   }
   .preview-empty { color: #a1a1aa; }
   .caret::after {
@@ -371,6 +482,20 @@ const POPOVER_STYLES = `
     background: #6366f1; vertical-align: -2px; margin-left: 1px;
     animation: inkwell-caret 1s steps(1) infinite;
   }
+
+  /* Pre-token "thinking" state — an animated indicator instead of dead text. */
+  .thinking {
+    display: inline-flex; align-items: center; gap: 7px;
+    color: #71717a;
+  }
+  .thinking-dots { display: inline-flex; gap: 4px; }
+  .thinking-dots i {
+    display: block; width: 5px; height: 5px;
+    border-radius: 50%; background: #6366f1;
+    animation: inkwell-thinking 1.1s ease-in-out infinite;
+  }
+  .thinking-dots i:nth-child(2) { animation-delay: .15s; }
+  .thinking-dots i:nth-child(3) { animation-delay: .30s; }
 
   .err {
     margin-top: 8px;
@@ -402,7 +527,8 @@ const POPOVER_STYLES = `
     appearance: none; border: 0; cursor: pointer;
     display: inline-flex; align-items: center; gap: 6px;
     padding: 8px 12px; border-radius: 8px;
-    font: 500 13px/1 inherit;
+    font-family: var(--inkwell-font);
+    font-size: 13px; font-weight: 500; line-height: 1;
     transition: background 120ms, color 120ms, transform 80ms, box-shadow 120ms;
   }
   .btn:focus-visible { outline: 2px solid #6366f1; outline-offset: 1px; }
@@ -425,6 +551,37 @@ const POPOVER_STYLES = `
   }
 
   .spin svg { animation: inkwell-spin 0.9s linear infinite; }
+
+  /* Slim, unobtrusive scrollbars on every scrollable region — the chunky
+     OS default scrollbar reads as unpolished inside a compact popover. */
+  .body, .preview-wrap, .source, .instruction {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
+  }
+  .body::-webkit-scrollbar,
+  .preview-wrap::-webkit-scrollbar,
+  .source::-webkit-scrollbar,
+  .instruction::-webkit-scrollbar { width: 10px; height: 10px; }
+  .body::-webkit-scrollbar-thumb,
+  .preview-wrap::-webkit-scrollbar-thumb,
+  .source::-webkit-scrollbar-thumb,
+  .instruction::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.20);
+    border: 3px solid transparent;
+    border-radius: 9999px;
+    background-clip: padding-box;
+  }
+  .body::-webkit-scrollbar-thumb:hover,
+  .preview-wrap::-webkit-scrollbar-thumb:hover,
+  .source::-webkit-scrollbar-thumb:hover,
+  .instruction::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.34);
+    background-clip: padding-box;
+  }
+  .body::-webkit-scrollbar-track,
+  .preview-wrap::-webkit-scrollbar-track,
+  .source::-webkit-scrollbar-track,
+  .instruction::-webkit-scrollbar-track { background: transparent; }
 
   /* Dark mode ---------------------------------------------- */
   @media (prefers-color-scheme: dark) {
@@ -476,6 +633,31 @@ const POPOVER_STYLES = `
     .btn-primary.accent:hover:not([disabled]) { background:#a5b4fc; }
     .btn-secondary { background:#27272a; color:#f4f4f5; border-color:#3f3f46; }
     .btn-secondary:hover:not([disabled]) { background:#3f3f46; border-color:#52525b; }
+    .pop { caret-color:#818cf8; }
+    .pop ::selection { background: rgba(129,140,248,0.32); }
+    .thinking { color:#a1a1aa; }
+    .thinking-dots i { background:#818cf8; }
+    .body, .preview-wrap, .source, .instruction {
+      scrollbar-color: rgba(255,255,255,0.22) transparent;
+    }
+    .body::-webkit-scrollbar-thumb,
+    .preview-wrap::-webkit-scrollbar-thumb,
+    .source::-webkit-scrollbar-thumb,
+    .instruction::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); }
+    .body::-webkit-scrollbar-thumb:hover,
+    .preview-wrap::-webkit-scrollbar-thumb:hover,
+    .source::-webkit-scrollbar-thumb:hover,
+    .instruction::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.30); }
+    .opts { background:#1a1a1d; border-color:#3f3f46; }
+    .opts:hover { border-color:#52525b; }
+    .opts-toggle { color:#a1a1aa; }
+    .opts-toggle:hover { color:#f4f4f5; }
+    .opts-icon, .opts-chevron { color:#71717a; }
+    .opts-toggle:hover .opts-icon,
+    .opts-toggle:hover .opts-chevron { color:#a1a1aa; }
+    .opts-toggle[aria-expanded="true"] + .opts-body .opts-inner {
+      border-top-color:#27272a;
+    }
   }
 
   /* Reduced motion */
@@ -483,6 +665,8 @@ const POPOVER_STYLES = `
     .pop { animation: none; }
     .caret::after { animation: none; opacity: 1; }
     .spin svg { animation: none; }
+    .thinking-dots i { animation: none; opacity: 1; }
+    .opts-body, .opts-chevron { transition: none; }
   }
 `;
 
@@ -543,7 +727,15 @@ interface State {
   sourceLang: SourceLanguage; // "auto" or an explicit language id
   detectedLang: LanguageId | null; // result of auto-detection (UI hint only)
   targetChoice: TargetChoice; // the "To" picker value
+  // Whether the Options disclosure (language + tone/model + instruction)
+  // is expanded. Collapsed by default so the popover's primary surface is
+  // just text in → result out; persisted across opens.
+  optionsExpanded: boolean;
 }
+
+// Persistence helpers (optsExpanded, lastUsed, validators, TargetChoice
+// type) live in ../lib/ui-state and are shared with the Side Panel so both
+// surfaces open in sync.
 
 export const mountPopover = async ({
   shadow,
@@ -552,8 +744,46 @@ export const mountPopover = async ({
   adapter,
   onClose,
 }: MountArgs): Promise<void> => {
+  // Load every piece of persisted UI state in parallel before any DOM is
+  // built, so the popover paints in its final shape — correct action,
+  // tone, model, language pair, working-language defaults, and expanded/
+  // collapsed disclosure — with no flicker on first frame. The combined
+  // chrome.storage.local round-trip resolves in a handful of milliseconds,
+  // fast enough to keep the open feeling instant.
+  const [initialOptsExpanded, lastUsed, settings] = await Promise.all([
+    loadOptsExpanded(),
+    loadLastUsed(),
+    localStore.getAll().catch(() => null),
+  ]);
+
   // field mode inserts the result back; selection/blank are copy-only.
   const canInsert = source.kind === "field";
+
+  // Resolve initial values with precedence:
+  //   validated lastUsed > options-page default > built-in default.
+  const defaultTone: TonePreset = settings?.defaultTone ?? TONE_PRESETS[0]!;
+  const defaultModel: ModelId = settings?.defaultModel ?? DEFAULT_MODEL_ID;
+  const workingLanguage: LanguageId =
+    settings?.workingLanguage ?? DEFAULT_WORKING_LANGUAGE;
+  const frequentLanguages: LanguageId[] = settings?.frequentLanguages ?? [];
+
+  const initialAction: Action = isValidAction(lastUsed.action)
+    ? lastUsed.action
+    : "reply";
+  const initialTone: TonePreset = isValidTone(lastUsed.tone)
+    ? lastUsed.tone
+    : defaultTone;
+  const initialModel: ModelId = isValidModel(lastUsed.model)
+    ? lastUsed.model
+    : defaultModel;
+  const initialSourceLang: SourceLanguage = isValidSourceLang(lastUsed.sourceLang)
+    ? lastUsed.sourceLang
+    : "auto";
+  const initialTargetChoice: TargetChoice = isValidTargetChoice(
+    lastUsed.targetChoice,
+  )
+    ? lastUsed.targetChoice
+    : "match";
   // ---- Style block (idempotent) ------------------------------------------
   shadow.querySelector("style[data-inkwell-popover]")?.remove();
   const style = document.createElement("style");
@@ -574,7 +804,7 @@ export const mountPopover = async ({
   head.className = "head";
   const brand = document.createElement("span");
   brand.className = "brand-icon";
-  brand.innerHTML = ICON_SPARKLES;
+  brand.innerHTML = ICON_DROP;
   const titleWrap = document.createElement("div");
   const title = document.createElement("div");
   title.id = "inkwell-pop-title";
@@ -772,13 +1002,50 @@ export const mountPopover = async ({
   errEl.style.display = "none";
   errEl.setAttribute("role", "alert");
 
+  // ---- Options disclosure ------------------------------------------------
+  // Wraps language + tone/model + the optional instruction so the popover's
+  // primary surface stays focused on the use case (text in → result out).
+  // Collapsed by default; expand to reveal the configuration controls. The
+  // expanded/collapsed state and a one-line summary of the current settings
+  // are persisted across popover opens.
+  const optsSection = document.createElement("div");
+  optsSection.className = "opts";
+
+  const optsToggle = document.createElement("button");
+  optsToggle.type = "button";
+  optsToggle.className = "opts-toggle";
+  optsToggle.setAttribute("aria-expanded", String(initialOptsExpanded));
+  optsToggle.setAttribute("aria-controls", "inkwell-opts-body");
+  // Sliders icon makes the disclosure read as "settings / configuration"
+  // at a glance — clearer than text alone.
+  const optsIcon = document.createElement("span");
+  optsIcon.className = "opts-icon";
+  optsIcon.setAttribute("aria-hidden", "true");
+  optsIcon.innerHTML = ICON_SLIDERS;
+  const optsText = document.createElement("span");
+  optsText.className = "opts-text";
+  optsText.textContent = "Options";
+  const optsChevron = document.createElement("span");
+  optsChevron.className = "opts-chevron";
+  optsChevron.setAttribute("aria-hidden", "true");
+  optsChevron.innerHTML = ICON_CHEVRON_DOWN;
+  optsToggle.append(optsIcon, optsText, optsChevron);
+
+  const optsBody = document.createElement("div");
+  optsBody.className = "opts-body";
+  optsBody.id = "inkwell-opts-body";
+  const optsInner = document.createElement("div");
+  optsInner.className = "opts-inner";
+  optsInner.append(langRow, settingsRow, instructionWrap);
+  optsBody.append(optsInner);
+
+  optsSection.append(optsToggle, optsBody);
+
   body.append(
     actions,
     actionHint,
     sourceWrap,
-    langRow,
-    settingsRow,
-    instructionWrap,
+    optsSection,
     previewWrap,
     errEl,
   );
@@ -808,9 +1075,9 @@ export const mountPopover = async ({
 
   // ---- State -------------------------------------------------------------
   const state: State = {
-    action: "reply",
-    tone: "professional",
-    model: DEFAULT_MODEL_ID,
+    action: initialAction,
+    tone: initialTone,
+    model: initialModel,
     instruction: "",
     streaming: false,
     preview: "",
@@ -818,16 +1085,12 @@ export const mountPopover = async ({
     error: null,
     usageMeta: KBD_SHORTCUT_FULL,
     hasOutput: false,
-    sourceLang: "auto",
+    sourceLang: initialSourceLang,
     detectedLang: null,
-    targetChoice: "match",
+    targetChoice: initialTargetChoice,
+    optionsExpanded: initialOptsExpanded,
   };
   modelSelect.value = state.model;
-
-  // Agent language preferences — loaded from chrome.storage.local after the
-  // first paint (see the localStore.getAll() call near the end of mount).
-  let workingLanguage: LanguageId = DEFAULT_WORKING_LANGUAGE;
-  let frequentLanguages: LanguageId[] = [];
 
   // Carries the metadata of the in-flight request so a finished stream can
   // be written to history (which needs both the input and the output text).
@@ -973,12 +1236,15 @@ export const mountPopover = async ({
       previewEl.classList.toggle("caret", state.streaming);
       previewEl.textContent = state.preview;
       previewWrap.scrollTop = previewWrap.scrollHeight;
+    } else if (state.streaming) {
+      // Streaming has started but no token has landed yet — an animated
+      // indicator reads as "working" far better than static text.
+      previewEl.classList.remove("preview-empty", "caret");
+      previewEl.replaceChildren(buildThinkingIndicator());
     } else {
       previewEl.classList.add("preview-empty");
       previewEl.classList.remove("caret");
-      previewEl.textContent = state.streaming
-        ? "Thinking…"
-        : "Your result will appear here.";
+      previewEl.textContent = "Your result will appear here.";
     }
 
     if (state.error) {
@@ -1039,6 +1305,48 @@ export const mountPopover = async ({
     }
   };
 
+  // Inline summary appended to "Options · …" in the disclosure header. Lets
+  // the user verify the language pair, tone (where it applies), model, and
+  // whether a custom instruction is set — without having to expand.
+  const computeOptsSummary = (): string => {
+    const parts: string[] = [];
+    const srcShown =
+      state.sourceLang === "auto"
+        ? state.detectedLang
+          ? languageLabel(state.detectedLang)
+          : "Auto"
+        : languageLabel(state.sourceLang);
+
+    if (state.action === "grammar") {
+      parts.push(srcShown);
+    } else {
+      let tgtShown: string;
+      if (state.targetChoice === "match") {
+        tgtShown =
+          state.action === "reply" ? "Customer's lang" : "Same as source";
+      } else if (state.targetChoice === "bilingual") {
+        tgtShown = "Bilingual";
+      } else {
+        tgtShown = languageLabel(state.targetChoice as LanguageId);
+      }
+      parts.push(`${srcShown} → ${tgtShown}`);
+    }
+
+    if (state.action !== "translate") {
+      parts.push(TONE_PRESET_LABELS[state.tone]);
+    }
+    const m = MODEL_CATALOG.find((x) => x.id === state.model);
+    if (m) parts.push(m.label);
+    if (state.instruction.trim()) parts.push("custom note");
+
+    return parts.join(" · ");
+  };
+
+  const renderOptionsToggle = (): void => {
+    optsToggle.setAttribute("aria-expanded", String(state.optionsExpanded));
+    optsText.textContent = `Options · ${computeOptsSummary()}`;
+  };
+
   const renderAll = (): void => {
     renderActionVisuals();
     renderLanguageControls();
@@ -1046,6 +1354,7 @@ export const mountPopover = async ({
     renderCharCount();
     renderPreviewState();
     renderFooter();
+    renderOptionsToggle();
   };
 
   // ---- Language detection ------------------------------------------------
@@ -1056,7 +1365,10 @@ export const mountPopover = async ({
   const runDetection = async (text: string): Promise<void> => {
     const result = await detectLanguage(text);
     state.detectedLang = result ? result.language : null;
-    if (state.sourceLang === "auto") renderLanguageControls();
+    if (state.sourceLang === "auto") {
+      renderLanguageControls();
+      renderOptionsToggle();
+    }
   };
   const scheduleDetection = (text: string): void => {
     window.clearTimeout(detectTimer);
@@ -1131,6 +1443,8 @@ export const mountPopover = async ({
     // The subject text differs per action in field mode (incoming thread
     // vs. the draft), so refresh the detected-language badge.
     void detectFieldLanguage();
+    // Persist so the next popover opens on the same action.
+    saveLastUsed(state);
   };
   for (const a of Object.keys(actionButtons) as Action[]) {
     actionButtons[a].addEventListener("click", () => setAction(a));
@@ -1138,11 +1452,15 @@ export const mountPopover = async ({
   toneSelect.addEventListener("change", () => {
     // Option values come straight from TONE_PRESETS, so this is always valid.
     state.tone = toneSelect.value as TonePreset;
+    renderOptionsToggle();
+    saveLastUsed(state);
   });
   modelSelect.addEventListener("change", () => {
     // The <option> values come straight from MODEL_CATALOG, so the value is
     // always a valid ModelId.
     state.model = modelSelect.value as ModelId;
+    renderOptionsToggle();
+    saveLastUsed(state);
   });
   sourceSelect.addEventListener("change", () => {
     // Values are "auto" or a catalog language id — both valid SourceLanguage.
@@ -1153,14 +1471,28 @@ export const mountPopover = async ({
       else void runDetection(sourceEl.value);
     }
     renderLanguageControls();
+    renderOptionsToggle();
+    saveLastUsed(state);
   });
   targetSelect.addEventListener("change", () => {
     // Values are "match", "bilingual", or a catalog language id.
     state.targetChoice = targetSelect.value as TargetChoice;
+    renderOptionsToggle();
+    saveLastUsed(state);
   });
   instructionEl.addEventListener("input", () => {
     state.instruction = instructionEl.value;
     renderCharCount();
+    renderOptionsToggle();
+  });
+
+  // Expand/collapse the Options disclosure. The state is per-device and
+  // persisted, so a user who routinely tweaks settings doesn't re-open it
+  // every time the popover mounts.
+  optsToggle.addEventListener("click", () => {
+    state.optionsExpanded = !state.optionsExpanded;
+    renderOptionsToggle();
+    saveOptsExpanded(state.optionsExpanded);
   });
 
   sourceEl.addEventListener("input", () => {
@@ -1224,8 +1556,14 @@ export const mountPopover = async ({
 
   // Outside-click closes (but not when click is inside the same shadow).
   const onDocClick = (e: MouseEvent): void => {
-    const path = e.composedPath();
-    if (path.includes(root)) return;
+    // The popover lives in a CLOSED shadow root, so composedPath() does not
+    // expose its internal nodes to this document-level listener — only the
+    // shadow host. Testing `root` here can never match, which dismissed the
+    // popover on every click inside it, Generate included. Match the host,
+    // with the retargeted event.target (also the host) as a fallback.
+    if (sRoot.host && e.composedPath().includes(sRoot.host)) return;
+    const t = e.target;
+    if (t instanceof Element && t.closest("[data-inkwell-root]")) return;
     teardown(false);
   };
   document.addEventListener("mousedown", onDocClick, true);
@@ -1305,14 +1643,14 @@ export const mountPopover = async ({
         return {
           error:
             "Couldn't find a message to reply to on this page. Select the " +
-            "customer's message, then click the ✨ icon.",
+            "customer's message, then click the Inkwell icon.",
         };
       }
       if (state.action === "translate" && !hasPageContext && !hasDraft) {
         return {
           error:
             "Nothing to translate here. Select the text you want translated, " +
-            "then click the ✨ icon.",
+            "then click the Inkwell icon.",
         };
       }
       if (state.action === "grammar" && !hasDraft) {
@@ -1328,8 +1666,8 @@ export const mountPopover = async ({
       ) {
         return {
           error:
-            "Type a draft to rewrite, or describe what to write in the " +
-            "instruction box below.",
+            "Type a draft to rewrite, or open Options to describe what " +
+            "to write.",
         };
       }
       return ctx;
@@ -1347,7 +1685,7 @@ export const mountPopover = async ({
     }
     if (state.action === "rewrite" && !text && !instruction) {
       return {
-        error: "Add text to rewrite, or describe what to write below.",
+        error: "Add text to rewrite, or open Options to describe what to write.",
       };
     }
     const base = {
@@ -1370,6 +1708,15 @@ export const mountPopover = async ({
       const built = await buildContext();
       if ("error" in built) {
         state.error = built.error;
+        // Auto-expand Options when the missing input lives there. Currently
+        // that's the rewrite-without-text path — the instruction is hidden
+        // in the collapsed disclosure, and silently expanding lets the user
+        // act on the guidance without an extra click.
+        if (state.action === "rewrite" && !state.instruction.trim()) {
+          state.optionsExpanded = true;
+          renderOptionsToggle();
+          saveOptsExpanded(true);
+        }
         renderPreviewState();
         renderFooter();
         return;
@@ -1582,34 +1929,31 @@ export const mountPopover = async ({
   if (source.kind === "field") void detectFieldLanguage();
   else void runDetection(sourceEl.value);
 
-  // Apply the user's saved defaults (tone, model, languages) from
-  // chrome.storage.local. Done after the first paint so the popover opens
-  // instantly; the controls update a beat later if the saved defaults
-  // differ from the built-ins.
-  void localStore
-    .getAll()
-    .then((settings) => {
-      if (settings.defaultTone !== state.tone) {
-        state.tone = settings.defaultTone;
-        renderToneVisuals();
-      }
-      if (settings.defaultModel !== state.model) {
-        state.model = settings.defaultModel;
-        modelSelect.value = state.model;
-      }
-      workingLanguage = settings.workingLanguage;
-      frequentLanguages = settings.frequentLanguages;
-      // The "To" picker's options and labels depend on these preferences.
-      renderLanguageControls();
-    })
-    .catch(() => {
-      // Storage unavailable — keep the defaults.
-    });
+  // All defaults (tone, model, languages, working language, frequent
+  // languages) are loaded pre-paint via the Promise.all at the top of
+  // mountPopover — no post-paint reapply needed.
 };
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// The pre-token "thinking" indicator: a label plus three pulsing dots.
+const buildThinkingIndicator = (): HTMLElement => {
+  const wrap = document.createElement("span");
+  wrap.className = "thinking";
+  const label = document.createElement("span");
+  label.textContent = "Thinking";
+  const dots = document.createElement("span");
+  dots.className = "thinking-dots";
+  dots.append(
+    document.createElement("i"),
+    document.createElement("i"),
+    document.createElement("i"),
+  );
+  wrap.append(label, dots);
+  return wrap;
+};
 
 const createActionButton = (action: Action): HTMLButtonElement => {
   const btn = document.createElement("button");

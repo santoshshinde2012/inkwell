@@ -1,13 +1,15 @@
 {
   "name": "@inkwell/extension",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Chrome MV3 extension for Inkwell.",
   "type": "module",
   "scripts": {
     "dev": "vite build --mode development --watch",
     "build": "vite build",
+    "icons": "bash scripts/generate-icons.sh",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
     "clean": "rm -rf dist"
   },
   "dependencies": {

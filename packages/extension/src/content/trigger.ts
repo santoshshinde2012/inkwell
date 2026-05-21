@@ -1,4 +1,4 @@
-// Floating ✨ trigger that appears next to an editable field OR a text
+// Floating Inkwell trigger that appears next to an editable field OR a text
 // selection. Clicking it opens the popover for that source.
 //
 //   • Field mode  — the trigger tracks the field on scroll/resize, hides
@@ -6,9 +6,9 @@
 //   • Selection mode — the trigger sits by the highlighted text and is
 //     ephemeral: it dismisses on scroll or when the selection clears.
 //
-// Real SVG sparkle, soft branded gradient, hover tooltip with the keyboard
-// shortcut, smooth fade/scale. Mounted in the SAME closed Shadow DOM the
-// popover uses.
+// The Inkwell ink-drop mark on the branded gradient, hover tooltip with the
+// keyboard shortcut, smooth fade/scale. Mounted in the SAME closed Shadow
+// DOM the popover uses.
 
 import { mountPopover, type PopoverSource } from "./popover";
 import type { SiteAdapter } from "./adapters";
@@ -24,10 +24,10 @@ const KBD_SHORTCUT = navigator.platform.includes("Mac")
 let activeRoot: HTMLElement | null = null;
 let cleanup: (() => void) | null = null;
 
-const SVG_SPARKLES = `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-  <path d="M9.94 14.5A2 2 0 0 0 8.5 13.06L2.37 11.48a.5.5 0 0 1 0-.96L8.5 8.94A2 2 0 0 0 9.94 7.5l1.58-6.13a.5.5 0 0 1 .96 0L14.06 7.5A2 2 0 0 0 15.5 8.94l6.13 1.58a.5.5 0 0 1 0 .96L15.5 13.06a2 2 0 0 0-1.44 1.44l-1.58 6.13a.5.5 0 0 1-.96 0Z"/>
-  <path d="M20 3v4"/><path d="M22 5h-4"/>
+// The Inkwell brand mark — a filled ink drop. Matches icons/logo.svg.
+const SVG_DROP = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+  <path d="M12 4.88C13.13 6.94 16.13 9 16.13 11.44A5.25 5.25 0 1 1 7.88 11.44C7.88 9 10.88 6.94 12 4.88Z"/>
 </svg>`;
 
 const triggerStyles = `
@@ -84,11 +84,12 @@ const triggerStyles = `
     position: fixed;
     background: #18181b;
     color: #f4f4f5;
-    font: 500 11px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-      sans-serif;
+    font: 500 11px/1 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+      Roboto, "Helvetica Neue", Arial, sans-serif;
     padding: 6px 8px; border-radius: 6px;
     white-space: nowrap;
     box-shadow: 0 4px 12px rgba(0,0,0,0.18);
+    -webkit-font-smoothing: antialiased;
     animation: inkwell-tooltip-in 120ms ease both;
     z-index: 2147483647;
   }
@@ -170,7 +171,7 @@ export interface TriggerOptions {
   source: PopoverSource;
   /** Site adapter — used for the `site` id and field-mode extraction. */
   adapter: SiteAdapter;
-  /** Returns the viewport rect the ✨ button and popover anchor against. */
+  /** Returns the viewport rect the Inkwell button and popover anchor against. */
   rect: () => DOMRect;
   /**
    * field mode → an element to track; the trigger follows it on
@@ -188,6 +189,12 @@ export const mountTrigger = (opts: TriggerOptions): void => {
   const { host, shadow } = buildRoot();
   activeRoot = host;
 
+  // Once the popover is open it owns its own dismissal (Esc / outside-click).
+  // The trigger's ephemeral handlers — scroll-to-dismiss, blur-to-dismiss —
+  // must then stand down: they would otherwise tear down the shared shadow
+  // host out from under an open popover, destroying it mid-use.
+  let popoverOpen = false;
+
   const styleEl = document.createElement("style");
   styleEl.textContent = triggerStyles;
   shadow.appendChild(styleEl);
@@ -196,7 +203,7 @@ export const mountTrigger = (opts: TriggerOptions): void => {
   btn.type = "button";
   btn.className = "trigger";
   btn.setAttribute("aria-label", `Inkwell — ${KBD_SHORTCUT}`);
-  btn.innerHTML = SVG_SPARKLES;
+  btn.innerHTML = SVG_DROP;
   shadow.appendChild(btn);
   positionTrigger(btn, rect());
 
@@ -247,7 +254,9 @@ export const mountTrigger = (opts: TriggerOptions): void => {
   const onScrollResize = follow
     ? repositionDebounced
     : source.kind === "selection"
-      ? (): void => removeTrigger()
+      ? (): void => {
+          if (!popoverOpen) removeTrigger();
+        }
       : (): void => {};
   window.addEventListener("scroll", onScrollResize, true);
   window.addEventListener("resize", onScrollResize, true);
@@ -267,6 +276,7 @@ export const mountTrigger = (opts: TriggerOptions): void => {
   };
   const onFieldBlur = (): void => {
     setTimeout(() => {
+      if (popoverOpen) return;
       const ae = document.activeElement;
       if (ae === follow) return;
       if (ae?.closest?.(`[${ROOT_ATTR}]`)) return;
@@ -280,6 +290,7 @@ export const mountTrigger = (opts: TriggerOptions): void => {
 
   // Open the popover. The trigger hides; the popover takes over.
   const openPopover = (): void => {
+    popoverOpen = true;
     btn.style.display = "none";
     void mountPopover({
       shadow,
@@ -288,11 +299,12 @@ export const mountTrigger = (opts: TriggerOptions): void => {
       adapter,
       onClose: () => {
         // Restore the trigger so a second click re-opens the popover.
+        popoverOpen = false;
         btn.style.display = "";
       },
     });
   };
-  // Preserve the page's text selection. A mousedown on the ✨ would
+  // Preserve the page's text selection. A mousedown on the Inkwell button would
   // otherwise move focus and collapse the highlight the user just made —
   // a flicker, even though selection mode already snapshots the text.
   btn.addEventListener("mousedown", (e) => e.preventDefault());

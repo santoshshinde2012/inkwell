@@ -14,8 +14,21 @@ import {
   MESSAGE_TYPES,
   type MessageType,
 } from "@inkwell/shared";
-import { cancelStream, handleCompleteStream } from "./api-client";
+import { cancelStream, handleCompleteStream, type ResponseTarget } from "./api-client";
 import { evaluateSite } from "../lib/site-policy";
+
+// Make the toolbar action open the Side Panel rather than a popup. The
+// manifest deliberately omits `default_popup` so this call wins — clicking
+// the icon docks the persistent assistant on the right of the window.
+// Wrapped in try/catch because chrome.sidePanel is only available on
+// Chrome 114+; older browsers should still load the extension.
+try {
+  chrome.sidePanel
+    ?.setPanelBehavior({ openPanelOnActionClick: true })
+    .catch(() => {});
+} catch {
+  /* sidePanel API unavailable — toolbar icon click is a no-op then */
+}
 
 // ---------------------------------------------------------------------------
 // Lifecycle
@@ -51,20 +64,19 @@ type Handler = (
 const handleCompleteStart: Handler = (rawMsg, sender) => {
   const parsed = CompleteStartMessageSchema.safeParse(rawMsg);
   if (!parsed.success) return { ok: false, error: parsed.error.flatten() };
-  if (sender.tab?.id == null) {
-    return {
-      ok: false,
-      error: {
-        code: ERROR_CODES.VALIDATION_FAILED,
-        message: "Stream requires a tab sender",
-      },
-    };
-  }
-  // Streaming response: ack immediately; tokens flow back to the content
-  // script via tabs.sendMessage.
+  // Two callers can start a stream:
+  //   - the in-page popover (a content script): we route tokens back to its
+  //     tab via chrome.tabs.sendMessage;
+  //   - the side panel (an extension page with no tab): tokens go via
+  //     chrome.runtime.sendMessage and the page filters on streamId.
+  const target: ResponseTarget =
+    sender.tab?.id != null
+      ? { kind: "tab", tabId: sender.tab.id }
+      : { kind: "runtime" };
+  // Streaming response: ack immediately; tokens flow back asynchronously.
   void handleCompleteStream({
     message: parsed.data,
-    senderTabId: sender.tab.id,
+    target,
   });
   return { ok: true };
 };

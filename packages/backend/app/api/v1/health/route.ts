@@ -8,7 +8,7 @@ export async function GET(request: Request): Promise<Response> {
   // loudly here rather than silently shipping a malformed health payload.
   const body = HealthSchema.parse({
     ok: true as const,
-    version: "1.0.0",
+    version: "1.1.0",
     runtime: "edge",
     timestamp: new Date().toISOString(),
   });

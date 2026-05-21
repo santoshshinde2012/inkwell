@@ -37,17 +37,22 @@ See [Getting started](./getting-started.md). It takes about 10 minutes.
 
 ## Tests
 
-We don't yet have a test suite. Manual verification is the bar:
+Unit tests (Vitest) cover the pure logic in `@inkwell/shared` and the
+backend `lib/`. Before opening a PR, all four of these must pass — CI
+([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) runs the
+same set:
 
-- Run `pnpm typecheck` — must pass.
-- Run `pnpm build` — must pass.
-- Exercise the changed path end-to-end. The `curl` recipes in
-  [How-to: Local development](./how-to/local-development.md) are a
-  starting point.
+- `pnpm typecheck` — strict TypeScript, every package.
+- `pnpm lint` — ESLint (`eslint` for shared/extension, `next lint` for
+  the backend).
+- `pnpm test` — the Vitest suite.
+- `pnpm build` — every package builds.
 
-If you add code that's hard to verify by hand (e.g., a non-trivial
-algorithm), add a test in the package's `*.test.ts` and update the
-build script.
+Add a `*.test.ts` beside any non-trivial logic you write — the runner
+picks up `packages/*/{src,lib}/**/*.test.ts` automatically. The UI
+layers (popover, popup, options) are still verified by hand; the `curl`
+recipes in [How-to: Local development](./how-to/local-development.md)
+exercise the backend directly.
 
 ## Documentation
 

@@ -26,17 +26,29 @@ import { localStore } from "../lib/storage";
 
 const inFlight = new Map<string, AbortController>();
 
+// Where to deliver streamed tokens. Content scripts (the in-page popover)
+// live in a tab and receive via tabs.sendMessage; extension-page callers
+// (the side panel) have no tab id, so we broadcast via runtime.sendMessage
+// and the page listens for its own stream id.
+export type ResponseTarget =
+  | { kind: "tab"; tabId: number }
+  | { kind: "runtime" };
+
 interface HandleArgs {
   message: CompleteStartMessage;
-  senderTabId: number;
+  target: ResponseTarget;
 }
 
-const sendToTab = (tabId: number, msg: object): void => {
-  chrome.tabs.sendMessage(tabId, msg).catch(() => {
-    // Tab may have closed; abort the matching stream.
+const sendToTarget = (target: ResponseTarget, msg: object): void => {
+  const abortOnFail = (): void => {
     const ctrl = inFlight.get((msg as { streamId?: string }).streamId ?? "");
     ctrl?.abort();
-  });
+  };
+  if (target.kind === "tab") {
+    chrome.tabs.sendMessage(target.tabId, msg).catch(abortOnFail);
+  } else {
+    chrome.runtime.sendMessage(msg).catch(abortOnFail);
+  }
 };
 
 export const cancelStream = (streamId: string): void => {
@@ -45,7 +57,7 @@ export const cancelStream = (streamId: string): void => {
 
 export const handleCompleteStream = async ({
   message,
-  senderTabId,
+  target,
 }: HandleArgs): Promise<void> => {
   const ctrl = new AbortController();
   inFlight.set(message.streamId, ctrl);
@@ -56,7 +68,7 @@ export const handleCompleteStream = async ({
       streamId: message.streamId,
       error: { code, message: msg, retryable },
     };
-    sendToTab(senderTabId, out);
+    sendToTarget(target, out);
   };
 
   // Hoisted so the catch block can name the backend in its error message.
@@ -149,10 +161,10 @@ export const handleCompleteStream = async ({
       while ((idx = buffer.indexOf("\n\n")) !== -1) {
         const raw = buffer.slice(0, idx);
         buffer = buffer.slice(idx + 2);
-        handleSseEvent(raw, message.streamId, senderTabId);
+        handleSseEvent(raw, message.streamId, target);
       }
     }
-  } catch (err: unknown) {
+  } catch {
     if (ctrl.signal.aborted) return; // cancelled by the user
     // A failed fetch (connection refused, DNS, CORS block) lands here.
     // The raw "Failed to fetch" is useless to the user, so give an
@@ -169,7 +181,11 @@ export const handleCompleteStream = async ({
   }
 };
 
-const handleSseEvent = (raw: string, streamId: string, tabId: number): void => {
+const handleSseEvent = (
+  raw: string,
+  streamId: string,
+  target: ResponseTarget,
+): void => {
   let event = "message";
   let data = "";
   for (const line of raw.split("\n")) {
@@ -189,7 +205,7 @@ const handleSseEvent = (raw: string, streamId: string, tabId: number): void => {
           streamId,
           delta: p.delta,
         };
-        sendToTab(tabId, out);
+        sendToTarget(target, out);
         return;
       }
       case SSE.EVENT_USAGE: {
@@ -199,7 +215,7 @@ const handleSseEvent = (raw: string, streamId: string, tabId: number): void => {
           streamId,
           usage: p,
         };
-        sendToTab(tabId, out);
+        sendToTarget(target, out);
         return;
       }
       case SSE.EVENT_ERROR: {
@@ -209,7 +225,7 @@ const handleSseEvent = (raw: string, streamId: string, tabId: number): void => {
           streamId,
           error: p,
         };
-        sendToTab(tabId, out);
+        sendToTarget(target, out);
         return;
       }
       case SSE.EVENT_DONE: {
@@ -217,7 +233,7 @@ const handleSseEvent = (raw: string, streamId: string, tabId: number): void => {
           type: MESSAGE_TYPES.COMPLETE_DONE,
           streamId,
         };
-        sendToTab(tabId, out);
+        sendToTarget(target, out);
         return;
       }
       default:

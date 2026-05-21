@@ -50,7 +50,20 @@ export function App(): JSX.Element {
 
   if (!settings) {
     return (
-      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950" aria-busy="true" />
+      <div className="min-h-screen bg-zinc-950" aria-busy="true">
+        <Header />
+        <div className="mx-auto max-w-3xl px-6 py-8">
+          <div className="h-10 animate-pulse rounded-2xl bg-zinc-900/60" />
+          <div className="mt-6 space-y-3">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="h-32 animate-pulse rounded-2xl border border-zinc-800/60 bg-zinc-900/40"
+              />
+            ))}
+          </div>
+        </div>
+      </div>
     );
   }
 
@@ -59,13 +72,15 @@ export function App(): JSX.Element {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+    <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <Header />
 
       <div className="mx-auto max-w-3xl px-6 py-8">
-        <Tabs current={tab} onChange={setTab} />
+        <div className="sticky top-0 z-10 -mx-6 mb-6 border-b border-zinc-800/70 bg-zinc-950/90 px-6 py-3 backdrop-blur">
+          <Tabs current={tab} onChange={setTab} />
+        </div>
 
-        <div className="mt-6 space-y-6">
+        <div className="space-y-4">
           {tab === "general" && (
             <GeneralTab settings={settings} patch={patch} flash={flash} />
           )}
@@ -94,16 +109,27 @@ export function App(): JSX.Element {
 
 function Header(): JSX.Element {
   return (
-    <header className="border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+    <header className="border-b border-zinc-800 bg-zinc-900/40">
       <div className="mx-auto flex max-w-3xl items-center gap-3 px-6 py-4">
-        <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-500 text-white">
-          <SparkleIcon />
+        <span
+          aria-hidden="true"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500 text-white shadow-lg shadow-indigo-900/30"
+        >
+          <BrandIcon />
         </span>
-        <div className="leading-tight">
-          <div className="text-sm font-semibold tracking-tight">Inkwell</div>
-          <div className="text-xs text-zinc-500 dark:text-zinc-400">
+        <div className="min-w-0 leading-tight">
+          <div className="text-[15px] font-semibold tracking-tight text-zinc-50">
+            Inkwell
+          </div>
+          <div className="text-[12px] text-zinc-400">
             Settings — stored only on this device
           </div>
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <span className="hidden items-center gap-1.5 rounded-full bg-zinc-900 px-2.5 py-1 text-[11px] font-medium text-zinc-300 ring-1 ring-inset ring-zinc-800 sm:inline-flex">
+            <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            Local-only
+          </span>
         </div>
       </div>
     </header>
@@ -129,7 +155,7 @@ function Tabs({
     <div
       role="tablist"
       aria-label="Settings sections"
-      className="inline-flex rounded-lg bg-zinc-100 p-1 text-sm dark:bg-zinc-800"
+      className="flex flex-wrap items-center gap-1 overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-900/80 p-1 shadow-inner shadow-black/20"
     >
       {tabs.map((t) => {
         const active = t.id === current;
@@ -140,10 +166,10 @@ function Tabs({
             role="tab"
             aria-selected={active}
             onClick={() => onChange(t.id)}
-            className={`rounded-md px-3 py-1.5 transition ${
+            className={`flex-shrink-0 rounded-xl px-3 py-1.5 text-[12.5px] font-medium transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-500 ${
               active
-                ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-white"
-                : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                ? "bg-gradient-to-b from-indigo-500/25 to-indigo-500/10 text-indigo-100 shadow-sm shadow-indigo-900/40 ring-1 ring-inset ring-indigo-400/30"
+                : "text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-100"
             }`}
           >
             {t.label}
@@ -164,11 +190,13 @@ function Card({
   children: React.ReactNode;
 }): JSX.Element {
   return (
-    <section className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+    <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5 transition-colors hover:border-zinc-700/80">
       <header className="mb-3">
-        <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
+        <h2 className="text-[14px] font-semibold leading-tight tracking-tight text-zinc-50">
+          {title}
+        </h2>
         {description && (
-          <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+          <p className="mt-1 text-[12px] leading-relaxed text-zinc-400">
             {description}
           </p>
         )}
@@ -255,7 +283,7 @@ function GeneralTab({
             type="button"
             onClick={saveProfile}
             disabled={!dirty}
-            className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-black disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+            className="inline-flex items-center justify-center rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Save profile
           </button>
@@ -275,10 +303,10 @@ function GeneralTab({
                 type="button"
                 onClick={() => void changeTone(t)}
                 aria-pressed={active}
-                className={`rounded-full border px-3 py-1 text-xs transition ${
+                className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 ${
                   active
-                    ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
-                    : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300"
+                    ? "border-indigo-500 bg-indigo-500 text-white shadow-sm dark:border-indigo-400 dark:bg-indigo-500"
+                    : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400 hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:text-zinc-100"
                 }`}
               >
                 {TONE_PRESET_LABELS[t]}
@@ -514,7 +542,7 @@ function BackendTab({
               type="button"
               onClick={() => void save()}
               disabled={busy || !dirty}
-              className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-black disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+              className="inline-flex items-center justify-center rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {busy ? "Saving…" : "Save & test"}
             </button>
@@ -696,7 +724,7 @@ function HostListCard({
         <button
           type="button"
           onClick={add}
-          className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-black dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+          className="inline-flex items-center justify-center rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
         >
           Add
         </button>
@@ -1104,7 +1132,7 @@ function AboutTab(): JSX.Element {
       </Card>
       <Card title="Version">
         <p className="font-mono text-xs text-zinc-500 dark:text-zinc-400">
-          1.0.0
+          1.1.0
         </p>
       </Card>
       <Card
@@ -1134,29 +1162,36 @@ function AboutTab(): JSX.Element {
 
 function Toast({ message }: { message: string }): JSX.Element {
   return (
-    <div className="pointer-events-none fixed bottom-6 right-6 z-50">
-      <div className="pointer-events-auto rounded-lg bg-zinc-900 px-3 py-2 text-xs text-white shadow-lg dark:bg-zinc-100 dark:text-zinc-900">
+    <div
+      className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center"
+      role="status"
+    >
+      <div className="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-zinc-100 px-4 py-2 text-[12px] font-medium text-zinc-900 shadow-lg shadow-black/40">
+        <svg
+          width="13"
+          height="13"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.75"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="text-emerald-600"
+          aria-hidden="true"
+        >
+          <path d="M20 6 9 17l-5-5" />
+        </svg>
         {message}
       </div>
     </div>
   );
 }
 
-function SparkleIcon(): JSX.Element {
+// The Inkwell brand mark — a filled ink drop. Matches icons/logo.svg.
+function BrandIcon(): JSX.Element {
   return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M9.94 14.5A2 2 0 0 0 8.5 13.06L2.37 11.48a.5.5 0 0 1 0-.96L8.5 8.94A2 2 0 0 0 9.94 7.5l1.58-6.13a.5.5 0 0 1 .96 0L14.06 7.5A2 2 0 0 0 15.5 8.94l6.13 1.58a.5.5 0 0 1 0 .96L15.5 13.06a2 2 0 0 0-1.44 1.44l-1.58 6.13a.5.5 0 0 1-.96 0Z" />
-      <path d="M20 3v4" />
-      <path d="M22 5h-4" />
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 4.88C13.13 6.94 16.13 9 16.13 11.44A5.25 5.25 0 1 1 7.88 11.44C7.88 9 10.88 6.94 12 4.88Z" />
     </svg>
   );
 }

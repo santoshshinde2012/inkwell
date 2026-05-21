@@ -7,8 +7,8 @@ reply assistant as a Chrome extension, and the decisions behind it.**
 | ------------ | ------------------------------------------------------ |
 | Audience     | Engineering, product, and support leadership           |
 | Reading time | ~13 minutes                                            |
-| Status       | Shipped — Inkwell 1.0.0                                 |
-| Last updated | 2026-05-17                                              |
+| Status       | Shipped — Inkwell 1.1.0                                 |
+| Last updated | 2026-05-18                                              |
 
 ---
 
@@ -361,7 +361,7 @@ new server-side data-at-rest liability**.
 Concretely, here is Maria's 2 PM ticket again — this time with Inkwell.
 
 1. She opens the ticket. The French text is on screen. She presses
-   `Cmd+Shift+K` (or clicks the ✨ that appears by the text field).
+   `Cmd+Shift+K` (or clicks the Inkwell button that appears by the text field).
 2. The popover opens. It already reads **"From · French"** — detected
    locally, before she has done anything.
 3. She wants to read it first. She picks **Translate**, leaves the target
@@ -405,7 +405,7 @@ French and German first — before widening to the full language set.
   Web ship today; helpdesk platforms (Zendesk, Intercom, Freshdesk) are
   the next targets. The adapter layer is a registry, so each is an
   isolated addition — see
-  [How-to: Add a site adapter](./docs/how-to/add-a-site-adapter.md).
+  [How-to: Add a site adapter](./how-to/add-a-site-adapter.md).
 - **Per-conversation history in the popover**, so an agent can see prior
   exchanges on the same ticket without opening the options page.
 - **Glossary support** — organisation-specific terms (product names,
@@ -438,14 +438,14 @@ use. That is what "integrated" actually means.
 
 ## Further reading
 
-- [Multilingual support](./docs/explanation/multilingual-support.md) — the
+- [Multilingual support](./explanation/multilingual-support.md) — the
   design rationale in reference form.
-- [Architecture](./docs/reference/architecture.md) — component-by-component
+- [Architecture](./reference/architecture.md) — component-by-component
   breakdown.
-- [API reference](./docs/reference/api.md) — the request/response contract,
+- [API reference](./reference/api.md) — the request/response contract,
   including the language fields.
-- [Security](./docs/security.md) and [Privacy](./docs/privacy.md) — the
+- [Security](./security.md) and [Privacy](./privacy.md) — the
   full threat model and data-handling policy.
-- [Prompt-injection defense](./docs/explanation/prompt-injection-defense.md)
+- [Prompt-injection defense](./explanation/prompt-injection-defense.md)
   — how untrusted content is contained.
-- [CHANGELOG](./CHANGELOG.md) — the 1.0.0 release notes.
+- [CHANGELOG](../CHANGELOG.md) — the full release history.

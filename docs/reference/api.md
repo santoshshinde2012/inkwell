@@ -54,7 +54,7 @@ curl https://your-app.vercel.app/api/v1/health
 ```
 
 ```json
-{ "ok": true, "version": "1.0.0", "runtime": "edge", "timestamp": "..." }
+{ "ok": true, "version": "1.1.0", "runtime": "edge", "timestamp": "..." }
 ```
 
 ## `POST /api/v1/complete`

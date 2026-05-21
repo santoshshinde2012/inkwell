@@ -1,6 +1,6 @@
 # Security Policy
 
-_Last updated: 2026-05-16_
+_Last updated: 2026-05-17_
 
 This document states our security guarantees, threat model, mitigations,
 and how to report a vulnerability.

@@ -2,10 +2,10 @@
 // nothing until the site policy says we're allowed. Once allowed, the
 // extension can be activated three ways:
 //
-//   1. Field    — the user focuses an editable field. The ✨ trigger
+//   1. Field    — the user focuses an editable field. The Inkwell trigger
 //                 tracks the field; the result can be inserted or copied.
 //   2. Selection — the user highlights ANY text on the page (read-only
-//                 or not). The ✨ trigger appears by the highlight; the
+//                 or not). The Inkwell trigger appears by the highlight; the
 //                 result is copy-only (we never write to the page).
 //   3. Blank    — the keyboard shortcut with nothing focused/selected
 //                 opens the popover with an empty box for the user to
@@ -191,13 +191,28 @@ const init = async (): Promise<void> => {
     mountBlankTrigger();
   };
 
-  chrome.runtime.onMessage.addListener((msg) => {
-    if (
-      msg &&
-      typeof msg === "object" &&
-      (msg as { type?: unknown }).type === "OPEN_POPOVER_AT_FOCUS"
-    ) {
+  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    const t = (msg as { type?: unknown } | null)?.type;
+    if (t === "OPEN_POPOVER_AT_FOCUS") {
       openAtFocus();
+      return false;
+    }
+    if (t === "GET_SELECTION") {
+      // The side panel asks the active tab for its current selection on
+      // demand. We reply synchronously with the raw selected text — never
+      // anything from inside our own UI, which the side panel doesn't
+      // need to know about.
+      const sel = window.getSelection();
+      const raw = sel ? sel.toString() : "";
+      const anchor = sel?.anchorNode;
+      const inOurUi =
+        anchor instanceof Node &&
+        (anchor.nodeType === Node.ELEMENT_NODE
+          ? (anchor as Element)
+          : anchor.parentElement
+        )?.closest(`[${ROOT_ATTR}]`);
+      sendResponse({ text: inOurUi ? "" : raw.trim() });
+      return false;
     }
     return false;
   });
@@ -205,6 +220,5 @@ const init = async (): Promise<void> => {
 
 void init().catch((err: unknown) => {
   // Never throw from a content script — log and move on.
-  // eslint-disable-next-line no-console
   console.warn("[inkwell] content init failed", err);
 });

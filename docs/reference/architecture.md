@@ -37,7 +37,7 @@ OpenAI; all user settings live in `chrome.storage.local`.
 
 | File | Role |
 | --- | --- |
-| [`manifest.config.ts`](../../packages/extension/manifest.config.ts) | MV3 manifest. CSP, minimal permissions, host_permissions, commands. |
+| [`manifest.config.ts`](../../packages/extension/manifest.config.ts) | MV3 manifest. CSP, minimal permissions, host_permissions, commands, brand icons. |
 | [`src/background/index.ts`](../../packages/extension/src/background/index.ts) | Service worker. Only component making network calls. Message handler registry. |
 | [`src/background/api-client.ts`](../../packages/extension/src/background/api-client.ts) | HTTP + SSE client. Reads the user-configured backend URL + optional API key from storage per request; attaches the optional local profile. |
 | [`src/content/index.ts`](../../packages/extension/src/content/index.ts) | Content script. Detects editable fields, mounts the trigger. |

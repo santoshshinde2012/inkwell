@@ -8,11 +8,10 @@
 #   1. pnpm install --frozen-lockfile  → lockfile is honest
 #   2. @inkwell/shared builds            → consuming packages can resolve types
 #   3. typecheck (all packages)          → strict TS passes everywhere
-#   4. backend prod build                → /api routes + middleware compile
-#   5. extension prod build              → MV3 bundle generates cleanly
-#
-# Tests aren't run here yet — when we add them, drop a `pnpm test` step
-# between typecheck and the builds.
+#   4. lint (all packages)               → ESLint / next lint clean
+#   5. test (Vitest)                     → shared + backend unit tests pass
+#   6. backend prod build                → /api routes + middleware compile
+#   7. extension prod build              → MV3 bundle generates cleanly
 #
 # Vercel still owns the actual deploy via its GitHub integration; this
 # workflow just gates merges.
@@ -33,7 +32,7 @@ concurrency:
 
 jobs:
   build:
-    name: typecheck + build
+    name: verify
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -58,6 +57,9 @@ jobs:
 
       - name: Typecheck
         run: pnpm -r typecheck
+
+      - name: Lint
+        run: pnpm -r lint
 
       - name: Build backend
         run: pnpm --filter @inkwell/backend exec next build

@@ -12,7 +12,7 @@
 
 import type { Action, LanguageId } from "@inkwell/shared";
 
-const STORAGE_KEY = "history.entries";
+export const STORAGE_KEY = "history.entries";
 const MAX_ENTRIES = 250;
 const MAX_TEXT_CHARS = 2000;
 

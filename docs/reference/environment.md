@@ -44,8 +44,10 @@ The startup banner tells you whether OpenAI is live:
 [inkwell] features: openai=true
 ```
 
-If that reads `openai=false` in production, `OPENAI_API_KEY` is missing
-and the backend is serving the mock response.
+If that reads `openai=false` in production, `OPENAI_API_KEY` is missing —
+the backend would serve mock responses to real users, so it also logs an
+explicit `[inkwell] WARNING: production build with no OPENAI_API_KEY …`
+line. Set the key and redeploy.
 
 ## See also
 

@@ -2,14 +2,14 @@
 
 > **⚠️ Historical document — not the current spec.**
 > This is the *original* brief that scaffolded the project. The product
-> has since shipped as **Inkwell 1.0.0** and evolved well beyond this
+> has since shipped as **Inkwell 1.1.0** and evolved well beyond this
 > plan: authentication (Clerk) and the database (Turso) were removed,
 > integrated multilingual support was added, and the API surface
 > changed. It is kept only as a record of where the project started.
 >
 > For the current product, read instead:
-> [README](./README.md) · [ARTICLE](./ARTICLE.md) ·
-> [docs/](./docs/README.md) · [CHANGELOG](./CHANGELOG.md).
+> [README](../README.md) · [ARTICLE](./ARTICLE.md) ·
+> [docs index](./README.md) · [CHANGELOG](../CHANGELOG.md).
 
 ---
 

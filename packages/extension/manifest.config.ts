@@ -37,11 +37,38 @@ export const buildManifest = (backendUrl: string) => {
       "Translate customer queries and draft, fix, and rewrite replies in any language — streaming, secure, no auto-send.",
     version: pkg.version,
 
+    // Brand icons — rasterised from icons/logo.svg (see scripts/generate-icons.sh).
+    // Chrome requires raster (PNG) icons; a 128px icon is mandatory to publish
+    // on the Chrome Web Store.
+    icons: {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png",
+    },
+
     action: {
       default_title: "Inkwell — multilingual writing assistant",
-      default_popup: "src/popup/index.html",
+      // No default_popup: clicking the toolbar icon opens the Chrome Side
+      // Panel instead, so the assistant stays open alongside the page.
+      // The background worker pairs this with
+      //   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
+      // so a single action click reveals the side panel.
+      default_icon: {
+        "16": "icons/icon-16.png",
+        "32": "icons/icon-32.png",
+        "48": "icons/icon-48.png",
+        "128": "icons/icon-128.png",
+      },
     },
     options_page: "src/options/index.html",
+
+    // The persistent assistant lives in Chrome's Side Panel — a first-class
+    // right-side dock that stays open while the user browses. Requires
+    // Chrome 114+ and the "sidePanel" permission below.
+    side_panel: {
+      default_path: "src/sidepanel/index.html",
+    },
 
     background: {
       service_worker: "src/background/index.ts",
@@ -61,7 +88,7 @@ export const buildManifest = (backendUrl: string) => {
       },
     ],
 
-    permissions: ["storage", "scripting", "activeTab"],
+    permissions: ["storage", "scripting", "activeTab", "sidePanel"],
 
     host_permissions: [
       backendOrigin,

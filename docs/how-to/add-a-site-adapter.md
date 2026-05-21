@@ -127,7 +127,7 @@ pnpm --filter @inkwell/extension build
 ```
 
 Reload the extension on `chrome://extensions`. Open a GitHub issue or
-pull request, focus the comment box, click ✨. The popover should run —
+pull request, focus the comment box, click the Inkwell button. The popover should run —
 and `/api/v1/complete` should receive your `site: "github"` context.
 
 To inspect what the adapter actually extracts, add a temporary

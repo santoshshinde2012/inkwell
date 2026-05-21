@@ -1,5 +1,5 @@
 {
   "root": true,
   "extends": "next/core-web-vitals",
-  "ignorePatterns": [".next/", "node_modules/"]
+  "ignorePatterns": [".next/", "node_modules/", "**/*.test.ts"]
 }

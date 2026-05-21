@@ -75,7 +75,7 @@ Liveness probe. Unauthenticated. Used by the **Save & test** button.
 **Response** `200 application/json`:
 
 ```json
-{ "ok": true, "version": "1.0.0", "runtime": "node", "timestamp": "2026-05-09T12:00:00.000Z" }
+{ "ok": true, "version": "1.1.0", "runtime": "node", "timestamp": "2026-05-09T12:00:00.000Z" }
 ```
 
 Only `ok: true` is required; the other fields are informational.

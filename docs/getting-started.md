@@ -52,7 +52,7 @@ watcher (writes `packages/extension/dist/`). The log line
 
 ```bash
 curl http://localhost:3000/api/v1/health
-# {"ok":true,"version":"1.0.0","runtime":"edge","timestamp":"..."}
+# {"ok":true,"version":"1.1.0","runtime":"edge","timestamp":"..."}
 ```
 
 ## 5. Load the extension
@@ -72,17 +72,38 @@ so the extension works the moment it is loaded — no extra step.
 
 ## 6. Use it
 
-Open any site with a text field (Gmail compose, a tweet box, a plain
-`<textarea>`). Click into the field — a small ✨ trigger appears. Click
-it (or press `Cmd+Shift+K` / `Ctrl+Shift+K`):
+Inkwell has two surfaces — they share the same actions, options, and
+persisted settings:
 
-1. The popover opens with **Reply**, **Translate**, **Grammar**, and
-   **Rewrite**.
-2. Pick a tone, choose source/target languages, or type an instruction.
-3. Click **Generate** — the mock backend streams a paragraph
-   token-by-token.
-4. Click **Insert** to write it into the field, **Copy**, or
-   **Regenerate** to retry.
+**In-page popover.** Open any site with a text field (Gmail compose, a
+tweet box, a plain `<textarea>`). Click into the field — a small Inkwell
+button appears. Click it (or press `Cmd+Shift+K` / `Ctrl+Shift+K`).
+
+**Chrome Side Panel.** Click the Inkwell toolbar icon. The assistant
+docks on the right of the window and stays open while you browse.
+A left navigation rail switches between **Assistant** (the writing
+view) and **Settings** (Profile, Default tone, Default model, Working
+language, Frequent languages — all saved on change). The
+*Open full settings* link at the bottom of the rail jumps to the full
+options page for advanced config. Use the **Use page selection**
+button in the Assistant view to pull the active tab's highlighted text
+into the source box.
+
+Either way:
+
+1. The surface opens with **Reply**, **Translate**, **Grammar**, and
+   **Rewrite**. The configured defaults (tone, model, languages) work
+   for most cases — so most flows are just *pick action → Generate →
+   Insert / Copy*.
+2. To customise, click the **Options** disclosure to reveal the tone,
+   model, source/target language, and a freeform instruction box.
+   Your last-used action, tone, model, source language, and target
+   language are remembered across opens — and shared between the popover
+   and the Side Panel — so both open where you left off. (Instruction is
+   per-request, so it isn't persisted.)
+3. Click **Generate** — the backend streams a paragraph token-by-token.
+4. Click **Insert** (popover, field mode only) to write into the field,
+   **Copy**, or **Regenerate** to retry.
 
 Nothing is auto-sent.
 
@@ -113,7 +134,7 @@ Everything is stored only in `chrome.storage.local`. No account required.
 | Symptom | Likely cause |
 | --- | --- |
 | `Could not find @inkwell/shared` | You skipped step 2; run it. |
-| The ✨ trigger never appears | Site is on the default blocklist (banks/healthcare/password managers). Try another site, or allow it in options. |
+| The Inkwell button never appears | Site is on the default blocklist (banks/healthcare/password managers). Try another site, or allow it in options. |
 | The popup says "Backend unreachable" | The backend isn't running. Start it with `pnpm dev`, then reopen the popup. |
 | `Couldn't reach the backend …` when generating | Same as above — start `pnpm dev`, or set a reachable backend URL in Options → Backend. |
 | `403 ORIGIN_NOT_ALLOWED` | Only happens against a **production** backend — add the extension ID to `ALLOWED_EXTENSION_IDS` and redeploy. Dev (`pnpm dev`) accepts any extension. |

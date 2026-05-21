@@ -63,7 +63,7 @@ Confirm:
 
 ```bash
 curl https://your-app.vercel.app/api/v1/health
-# {"ok":true,"version":"1.0.0","runtime":"edge","timestamp":"..."}
+# {"ok":true,"version":"1.1.0","runtime":"edge","timestamp":"..."}
 ```
 
 `POST /api/v1/complete` from a non-allowed origin returns
@@ -92,7 +92,7 @@ In Chrome: `chrome://extensions` → reload Inkwell → copy the extension ID
 - [ ] `POST /api/v1/complete` from the extension streams tokens
 - [ ] Vercel logs show `[inkwell] features: openai=true`
 - [ ] Logs show `kind:log.completion` lines (metadata only, no content)
-- [ ] Sensitive sites (e.g. chase.com) don't show the ✨ trigger
+- [ ] Sensitive sites (e.g. chase.com) don't show the Inkwell button
 - [ ] Prompt-injection refusal works (`403 FORBIDDEN`)
 - [ ] Rate limit triggers at the 21st request in a minute (`429`)
 - [ ] CORS rejects `https://evil.example.com`
