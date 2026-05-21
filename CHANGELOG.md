@@ -6,6 +6,63 @@ uses semantic versioning.
 
 ## [Unreleased]
 
+### Changed
+
+- **Side Panel UI/UX refactor — mobile-app pattern.** The persistent
+  left navigation rail has been replaced with a hamburger-triggered
+  overlay drawer (slides in from the left over a dimmed/blurred
+  backdrop; Esc/backdrop/nav-pick all dismiss). The drawer carries a
+  compact profile card (gradient avatar + display name + one-line
+  backend status), three nav items (Assistant, History, Settings) with
+  a live History badge count, a brand-gradient "Open advanced settings"
+  CTA, and a compact one-line footer. The Assistant view now opens with
+  a hero empty state (action-themed icon + title + description + status
+  pills), keeps the segmented action picker visible in its own band,
+  and ends in a chat-input-style bar: chip toolbar (current mode +
+  Options + Selection) above an auto-growing textarea with a `+`
+  capture button on the left and a circular send button on the right.
+  Per-request Options moved out of the inline disclosure into a
+  bottom-sheet modal with focus trap, Escape, body scroll lock. Each of
+  the four actions has its own color theme (indigo / sky / emerald /
+  amber) that flows through the active tab, result-card glow, thinking
+  dots, streaming caret, and primary CTA gradient. The History view
+  gained day-grouping, search, inline copy/delete and clear-all; it
+  auto-refreshes via `chrome.storage.onChanged` so entries written from
+  the popover on another tab appear without a reload. The Settings view
+  was rebuilt with per-section colored icon glyphs (User/Palette/Cpu/
+  Globe/Sliders), a refined Profile card with a flash "Saved ✓"
+  indicator, model cards with semantic tier badges (`FAST` amber /
+  `QUALITY` emerald) and a check-circle in place of the radio dot, and
+  a Languages search filter. The whole shell is wrapped in an
+  ErrorBoundary so a render throw can be recovered without reloading.
+  `Cmd/Ctrl+B` toggles the drawer. The last-viewed tab is restored on
+  next open.
+- **Options page aligned with the Side Panel.** Tailwind switched to
+  `darkMode: "class"`; `<html class="dark">` forces dark on the options
+  page so the existing `dark:` variants activate regardless of system
+  theme. The Header, Tabs (pill segmented control with active
+  gradient), Card primitive (rounded-2xl), and Toast (centered pill)
+  were refreshed to share the Side Panel's design language.
+
+### Removed
+
+- **Toolbar popup (`src/popup/`).** Superseded by the Side Panel —
+  clicking the toolbar icon opens the side panel directly. The popup
+  React app, its `index.html`, and its `main.tsx` were deleted.
+- **Unit test infrastructure.** All `*.test.ts` files, `vitest.config.ts`,
+  the `vitest` devDependency, the `test`/`test:watch` scripts in the
+  root `package.json`, and the **Test** step in CI were removed.
+  Quality gates are now **typecheck → lint → build**. Validation of UI
+  behavior is done by hand against the side panel and popover.
+- **`docs/ARTICLE.md` and `docs/PROJECT_BRIEF.md`.** The marketing case
+  study (460 lines of narrative about how multilingual support shipped
+  at 1.1.0) and the original Claude Code scaffolding brief (356 lines
+  of historical "where we started" plan) were deleted. Both predated
+  the Side Panel refactor and only served as snapshots in time;
+  current technical state lives in [`docs/reference/architecture.md`](docs/reference/architecture.md)
+  and the [CHANGELOG](#changelog). References to them were removed
+  from `docs/README.md`.
+
 ### Added
 
 - **Chrome Side Panel — the assistant is now persistent.** Clicking the

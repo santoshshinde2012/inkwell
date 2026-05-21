@@ -81,13 +81,14 @@ button appears. Click it (or press `Cmd+Shift+K` / `Ctrl+Shift+K`).
 
 **Chrome Side Panel.** Click the Inkwell toolbar icon. The assistant
 docks on the right of the window and stays open while you browse.
-A left navigation rail switches between **Assistant** (the writing
-view) and **Settings** (Profile, Default tone, Default model, Working
-language, Frequent languages — all saved on change). The
-*Open full settings* link at the bottom of the rail jumps to the full
-options page for advanced config. Use the **Use page selection**
-button in the Assistant view to pull the active tab's highlighted text
-into the source box.
+A hamburger menu opens a slide-out drawer that switches between three
+views: **Assistant** (the writing view), **History** (a searchable log
+of past actions), and **Settings** (Profile, Default tone, Default
+model, Working language, Frequent languages — all saved on change). The
+*Open advanced settings* button in the drawer jumps to the full options
+page for backend config, per-site allow/block and reset. Press
+`Cmd/Ctrl+B` to toggle the drawer; press the `+` button next to the
+message field to pull the active tab's highlighted text into the input.
 
 Either way:
 
@@ -95,13 +96,16 @@ Either way:
    **Rewrite**. The configured defaults (tone, model, languages) work
    for most cases — so most flows are just *pick action → Generate →
    Insert / Copy*.
-2. To customise, click the **Options** disclosure to reveal the tone,
-   model, source/target language, and a freeform instruction box.
-   Your last-used action, tone, model, source language, and target
-   language are remembered across opens — and shared between the popover
-   and the Side Panel — so both open where you left off. (Instruction is
-   per-request, so it isn't persisted.)
-3. Click **Generate** — the backend streams a paragraph token-by-token.
+2. To customise, open **Options** — in the side panel it slides up as a
+   bottom sheet from the action bar; in the popover it's an inline
+   disclosure. Tone, model, source/target language, and a freeform
+   instruction box all live there. Your last-used action, tone, model,
+   source language, and target language are remembered across opens —
+   and shared between the popover and the Side Panel — so both open
+   where you left off. (Instruction is per-request, so it isn't
+   persisted.)
+3. Click **Generate** (or the send arrow in the side panel) — the
+   backend streams a paragraph token-by-token.
 4. Click **Insert** (popover, field mode only) to write into the field,
    **Copy**, or **Regenerate** to retry.
 
@@ -109,13 +113,16 @@ Nothing is auto-sent.
 
 ## 7. (Optional) Set a profile and languages
 
-Open the extension's options page (popup → gear icon).
+Open the side panel (toolbar icon) → hamburger menu → **Settings** for
+the everyday preferences, or **Open advanced settings** in the drawer
+for the full options page.
 
-- **General → Profile** — a display name and "about me", attached to
-  requests to personalize replies.
+- **Profile** — a display name and "about me", attached to requests to
+  personalize replies.
 - **Languages** — your working language and the languages you handle
-  often (surfaced first in the popover's language pickers).
-- **History** — a searchable log of every translation and draft.
+  often (surfaced first in the popover's and side panel's language
+  pickers; a search filter helps when the list grows).
+- **History** — every translation and draft, grouped by day, searchable.
 
 Everything is stored only in `chrome.storage.local`. No account required.
 
@@ -135,7 +142,7 @@ Everything is stored only in `chrome.storage.local`. No account required.
 | --- | --- |
 | `Could not find @inkwell/shared` | You skipped step 2; run it. |
 | The Inkwell button never appears | Site is on the default blocklist (banks/healthcare/password managers). Try another site, or allow it in options. |
-| The popup says "Backend unreachable" | The backend isn't running. Start it with `pnpm dev`, then reopen the popup. |
+| Side panel shows "Backend offline" | The backend isn't running. Start it with `pnpm dev`, then reopen the side panel. The drawer's profile chip will turn green when it's reachable. |
 | `Couldn't reach the backend …` when generating | Same as above — start `pnpm dev`, or set a reachable backend URL in Options → Backend. |
 | `403 ORIGIN_NOT_ALLOWED` | Only happens against a **production** backend — add the extension ID to `ALLOWED_EXTENSION_IDS` and redeploy. Dev (`pnpm dev`) accepts any extension. |
-| `Generate` does nothing | Check the popup's backend indicator, and `http://localhost:3000/api/v1/health`. |
+| `Generate` does nothing | Check the side panel top bar (it shows "Backend offline" when unreachable) and `http://localhost:3000/api/v1/health`. |

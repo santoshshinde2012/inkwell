@@ -707,21 +707,22 @@ function ActionSegments({
   current: Action;
   onChange: (a: Action) => void;
 }): JSX.Element {
-  const items: { id: Action; icon: JSX.Element; label: string }[] = [
-    { id: "reply", icon: <ReplyIcon size={13} />, label: "Reply" },
-    { id: "translate", icon: <TranslateIcon size={13} />, label: "Translate" },
-    { id: "grammar", icon: <GrammarIcon size={13} />, label: "Grammar" },
-    { id: "rewrite", icon: <RewriteIcon size={13} />, label: "Rewrite" },
+  const items: { id: Action; label: string }[] = [
+    { id: "reply", label: "Reply" },
+    { id: "translate", label: "Translate" },
+    { id: "grammar", label: "Grammar" },
+    { id: "rewrite", label: "Rewrite" },
   ];
   return (
     <div
       role="tablist"
       aria-label="Action"
-      className="grid grid-cols-4 gap-0.5 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-1 shadow-inner shadow-black/20"
+      className="grid grid-cols-4 gap-1 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-1 shadow-inner shadow-black/20"
     >
       {items.map((it) => {
         const active = it.id === current;
         const theme = ACTION_THEMES[it.id];
+        const Icon = ACTION_ICON[it.id];
         return (
           <button
             key={it.id}
@@ -731,16 +732,22 @@ function ActionSegments({
             aria-label={it.label}
             title={it.label}
             onClick={() => onChange(it.id)}
-            className={`inline-flex h-10 flex-col items-center justify-center gap-0.5 rounded-xl transition-all duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-500 ${
+            className={`group relative inline-flex h-12 flex-col items-center justify-center gap-1 rounded-xl transition-all duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-500 ${
               active
                 ? `${theme.tabActive} ${theme.tabRing}`
-                : "text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-100"
+                : `text-zinc-400 hover:bg-zinc-800/60 hover:${theme.accentIcon}`
             }`}
           >
-            {it.icon}
-            <span className="text-[9.5px] font-medium tracking-tight">
+            <Icon size={16} />
+            <span className="text-[10.5px] font-semibold tracking-tight">
               {it.label}
             </span>
+            {active && (
+              <span
+                aria-hidden="true"
+                className={`absolute -bottom-px left-1/2 h-0.5 w-5 -translate-x-1/2 rounded-full ${theme.dotBg}`}
+              />
+            )}
           </button>
         );
       })}
@@ -1034,17 +1041,20 @@ function ChatInputBar({
         </button>
         <textarea
           dir="auto"
-          rows={1}
+          rows={3}
           placeholder={placeholder}
           value={inputText}
           onChange={(e) => onInputChange(e.target.value)}
           onInput={(e) => {
-            // Auto-grow up to ~6 rows.
+            // Auto-grow up to ~10 lines (~208px). Keep the floor at the
+            // 3-row min so the textarea doesn't shrink below its
+            // initial reading height while a user is composing.
             const el = e.currentTarget;
             el.style.height = "auto";
-            el.style.height = Math.min(el.scrollHeight, 144) + "px";
+            el.style.height =
+              Math.min(Math.max(el.scrollHeight, 76), 208) + "px";
           }}
-          className="block min-h-[36px] max-h-36 flex-1 resize-none bg-transparent px-1 py-2 text-[13px] leading-relaxed text-zinc-100 placeholder-zinc-500 caret-indigo-400 focus:outline-none"
+          className="block min-h-[76px] max-h-52 flex-1 resize-none bg-transparent px-1 py-2 text-[13px] leading-relaxed text-zinc-100 placeholder-zinc-500 caret-indigo-400 focus:outline-none"
         />
         <PrimaryButton
           mode={mode}

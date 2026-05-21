@@ -19,7 +19,7 @@ This guide has two parts:
 The backend URL is a **runtime setting** — you don't rebuild the
 extension to change it.
 
-1. Open the extension's options page (popup → gear icon).
+1. Open the extension's options page — side panel → hamburger menu → **Open advanced settings**.
 2. Go to the **Backend** tab.
 3. Enter your **Backend URL** (e.g. `https://api.example.com`). No path,
    no trailing slash — Inkwell appends `/api/v1/...`.

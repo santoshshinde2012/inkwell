@@ -74,7 +74,10 @@ doesn't auto-reload extensions — click the reload icon on
 - **Popover (in-page UI):** DevTools on whatever site you're testing.
 - **Background service worker:** "Inspect views: service worker" on the
   extension card.
-- **Popup:** right-click the extension icon → Inspect popup.
+- **Side panel:** open the side panel, then right-click anywhere inside
+  it → Inspect. The "Inspect views: side panel" link on the extension
+  card opens the same DevTools instance.
+- **Options page:** open it, then DevTools as for any normal tab.
 - **Stored settings:** the service-worker DevTools console —
   `chrome.storage.local.get(console.log)`.
 

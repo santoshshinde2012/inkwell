@@ -35,23 +35,19 @@ See [Getting started](./getting-started.md). It takes about 10 minutes.
   express).
 - **Commit lockfile changes.** `pnpm-lock.yaml` is committed.
 
-## Tests
+## Quality gates
 
-Unit tests (Vitest) cover the pure logic in `@inkwell/shared` and the
-backend `lib/`. Before opening a PR, all four of these must pass — CI
+Before opening a PR, all three of these must pass — CI
 ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) runs the
 same set:
 
 - `pnpm typecheck` — strict TypeScript, every package.
 - `pnpm lint` — ESLint (`eslint` for shared/extension, `next lint` for
   the backend).
-- `pnpm test` — the Vitest suite.
 - `pnpm build` — every package builds.
 
-Add a `*.test.ts` beside any non-trivial logic you write — the runner
-picks up `packages/*/{src,lib}/**/*.test.ts` automatically. The UI
-layers (popover, popup, options) are still verified by hand; the `curl`
-recipes in [How-to: Local development](./how-to/local-development.md)
+The UI layers (popover, side panel, options page) are verified by hand;
+the `curl` recipes in [How-to: Local development](./how-to/local-development.md)
 exercise the backend directly.
 
 ## Documentation

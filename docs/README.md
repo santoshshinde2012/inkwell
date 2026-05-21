@@ -23,7 +23,6 @@ The structure follows the **[Diátaxis](https://diataxis.fr)** framework.
 | Understand multilingual support | [Explanation: Multilingual support](./explanation/multilingual-support.md) |
 | Add a new site adapter | [How-to: Add a site adapter](./how-to/add-a-site-adapter.md) |
 | Contribute code | [Contributing](./contributing.md) |
-| Read the end-to-end story | [Article: Multilingual support](./ARTICLE.md) |
 
 ## Layout
 
@@ -34,8 +33,6 @@ docs/
 ├── security.md                   threat model + reporting policy
 ├── privacy.md                    data-handling policy
 ├── contributing.md               PR / issue / code-style guide
-├── ARTICLE.md                    end-to-end case study (narrative)
-├── PROJECT_BRIEF.md              the original scaffolding brief (historical)
 ├── how-to/                       task-oriented recipes
 │   ├── deploy-to-vercel.md
 │   ├── local-development.md
@@ -64,8 +61,5 @@ docs/
 
 ## See also
 
-- [Article](./ARTICLE.md) — the end-to-end case study: the multilingual
-  support use case, the build, and the engineering decisions behind it.
-- [Project brief](./PROJECT_BRIEF.md) — the original problem statement.
 - [Top-level README](../README.md) — overview, layout, quick start.
 - [CHANGELOG](../CHANGELOG.md) — project history.

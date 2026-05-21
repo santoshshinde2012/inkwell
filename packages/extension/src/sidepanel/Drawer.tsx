@@ -98,21 +98,13 @@ export function Drawer({
         onClick={(e) => e.stopPropagation()}
         style={{ animation: "drawer-slide 200ms ease-out" }}
       >
+        {/* Brand mark lives in the Footer at the bottom; this top strip is
+            just the close affordance so the X stays where users expect. */}
         <header
           id={titleId}
-          className="flex items-center justify-between px-4 pt-4"
+          className="flex items-center justify-end px-3 pt-3"
         >
-          <div className="flex items-center gap-2">
-            <span
-              aria-hidden="true"
-              className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500 text-white shadow-md shadow-indigo-900/40"
-            >
-              <DropIcon size={13} />
-            </span>
-            <span className="text-[14px] font-semibold tracking-tight text-zinc-50">
-              Inkwell
-            </span>
-          </div>
+          <h2 className="sr-only">Inkwell menu</h2>
           <button
             ref={closeRef}
             type="button"
@@ -125,7 +117,7 @@ export function Drawer({
           </button>
         </header>
 
-        <div className="flex-1 overflow-y-auto px-4 pb-4 pt-4">
+        <div className="flex-1 overflow-y-auto px-4 pb-4 pt-2">
           <ProfileCard
             initial={initial}
             displayName={displayName}

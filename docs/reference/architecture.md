@@ -46,8 +46,8 @@ OpenAI; all user settings live in `chrome.storage.local`.
 | [`src/lib/storage.ts`](../../packages/extension/src/lib/storage.ts) | Typed wrapper around `chrome.storage.local` — the ONLY persistence. Holds profile, tone/model defaults, language preferences, the configurable backend URL + API key, and site policy. |
 | [`src/lib/languages.ts`](../../packages/extension/src/lib/languages.ts) | Local language detection via `chrome.i18n.detectLanguage`. |
 | [`src/lib/history.ts`](../../packages/extension/src/lib/history.ts) | Bounded on-device translation & action history (`chrome.storage.local`). |
-| [`src/popup/`](../../packages/extension/src/popup/) | React popup — backend connectivity indicator, current-site quick toggle, working language, settings link. No sign-in. |
-| [`src/options/`](../../packages/extension/src/options/) | React options page — profile, defaults, languages, history, backend, site allow/blocklist. |
+| [`src/sidepanel/`](../../packages/extension/src/sidepanel/) | React Side Panel — the persistent assistant. Three views (Assistant / History / Settings) behind a hamburger overlay drawer; bottom-sheet options; per-action color theming. Same actions and persisted state as the popover. |
+| [`src/options/`](../../packages/extension/src/options/) | React options page — profile, defaults, languages, history, backend, site allow/blocklist. Forced dark to match the Side Panel. |
 
 ### Backend (Next.js 15)
 
