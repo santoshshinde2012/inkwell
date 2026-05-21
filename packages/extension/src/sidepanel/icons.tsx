@@ -212,32 +212,6 @@ export function SearchIcon(p: IconProps): JSX.Element {
   );
 }
 
-export function InboxIcon(p: IconProps): JSX.Element {
-  return (
-    <svg {...svg(p)}>
-      <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
-      <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
-    </svg>
-  );
-}
-
-export function HomeIcon(p: IconProps): JSX.Element {
-  return (
-    <svg {...svg(p)}>
-      <path d="M3 9.5 12 3l9 6.5V21a1 1 0 0 1-1 1h-5v-7h-6v7H4a1 1 0 0 1-1-1Z" />
-    </svg>
-  );
-}
-
-export function PinIcon(p: IconProps): JSX.Element {
-  return (
-    <svg {...svg(p)}>
-      <path d="M12 17v5" />
-      <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1Z" />
-    </svg>
-  );
-}
-
 export function MenuIcon(p: IconProps): JSX.Element {
   return (
     <svg {...svg(p)}>
@@ -266,42 +240,3 @@ export function PlusIcon(p: IconProps): JSX.Element {
   );
 }
 
-export function ChevronRightIcon(p: IconProps): JSX.Element {
-  return (
-    <svg {...svg(p)}>
-      <path d="m9 18 6-6-6-6" />
-    </svg>
-  );
-}
-
-export function GiftIcon(p: IconProps): JSX.Element {
-  return (
-    <svg {...svg(p)}>
-      <polyline points="20 12 20 22 4 22 4 12" />
-      <rect width="20" height="5" x="2" y="7" />
-      <line x1="12" x2="12" y1="22" y2="7" />
-      <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7Z" />
-      <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7Z" />
-    </svg>
-  );
-}
-
-export function HelpIcon(p: IconProps): JSX.Element {
-  return (
-    <svg {...svg(p)}>
-      <circle cx="12" cy="12" r="10" />
-      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-      <line x1="12" x2="12.01" y1="17" y2="17" />
-    </svg>
-  );
-}
-
-export function GlobeIcon(p: IconProps): JSX.Element {
-  return (
-    <svg {...svg(p)}>
-      <circle cx="12" cy="12" r="10" />
-      <path d="M2 12h20" />
-      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10Z" />
-    </svg>
-  );
-}

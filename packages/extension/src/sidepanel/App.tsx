@@ -27,10 +27,6 @@ import {
   historyStore,
   STORAGE_KEY as HISTORY_STORAGE_KEY,
 } from "../lib/history";
-import {
-  DEFAULT_WORKING_LANGUAGE,
-  type LanguageId,
-} from "@inkwell/shared";
 
 export function App(): JSX.Element {
   const [view, setView] = useState<SidePanelView>("assistant");
@@ -41,23 +37,17 @@ export function App(): JSX.Element {
   const [backendUrl, setBackendUrl] = useState<string>("");
 
   const [displayName, setDisplayName] = useState<string>("");
-  const [workingLanguage, setWorkingLanguage] = useState<LanguageId>(
-    DEFAULT_WORKING_LANGUAGE,
-  );
   const [historyCount, setHistoryCount] = useState<number>(0);
 
-  // Initial backend probe — drives the drawer profile badge + Assistant
-  // top-bar subtitle.
+  // Initial backend probe — drives the drawer profile status row +
+  // Assistant top-bar subtitle.
   useEffect(() => {
     let cancelled = false;
     void localStore
       .getAll()
       .catch(() => null)
       .then(async (s) => {
-        if (s) {
-          setDisplayName(s.displayName);
-          setWorkingLanguage(s.workingLanguage);
-        }
+        if (s) setDisplayName(s.displayName);
         return probeBackend(s?.backendUrl, s?.apiKey);
       })
       .then((r) => {
@@ -89,9 +79,9 @@ export function App(): JSX.Element {
     saveLastView(view);
   }, [hydrated, view]);
 
-  // Stay in sync with profile / working-language edits the user makes in
-  // Settings — chrome.storage.onChanged is the cheapest way to do this
-  // without coupling the views together.
+  // Stay in sync with profile edits the user makes in Settings — uses
+  // chrome.storage.onChanged so we don't have to lift the form's state
+  // up out of the Settings view.
   useEffect(() => {
     const onChanged = (
       changes: Record<string, chrome.storage.StorageChange>,
@@ -101,10 +91,6 @@ export function App(): JSX.Element {
       if ("settings.displayName" in changes) {
         const v = changes["settings.displayName"].newValue;
         if (typeof v === "string") setDisplayName(v);
-      }
-      if ("settings.workingLanguage" in changes) {
-        const v = changes["settings.workingLanguage"].newValue;
-        if (typeof v === "string") setWorkingLanguage(v as LanguageId);
       }
     };
     chrome.storage.onChanged.addListener(onChanged);
@@ -175,7 +161,6 @@ export function App(): JSX.Element {
         current={view}
         backendStatus={backendStatus}
         displayName={displayName}
-        workingLanguage={workingLanguage}
         historyCount={historyCount}
         onClose={closeDrawer}
         onChange={setView}
