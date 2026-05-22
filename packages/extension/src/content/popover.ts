@@ -44,7 +44,10 @@ import {
   languageDisplayName,
   languageLabel,
 } from "@inkwell/shared";
-import { sendToBackground } from "../lib/messaging";
+import {
+  ExtensionContextInvalidatedError,
+  sendToBackground,
+} from "../lib/messaging";
 import { localStore } from "../lib/storage";
 import { detectLanguage } from "../lib/languages";
 import { historyStore, type NewHistoryEntry } from "../lib/history";
@@ -499,9 +502,18 @@ const POPOVER_STYLES = `
 
   .err {
     margin-top: 8px;
-    font-size: 12px; color: #b91c1c; display: flex; gap: 6px; align-items: flex-start;
+    font-size: 12px; color: #b91c1c; display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
   }
   .err svg { flex-shrink: 0; width: 14px; height: 14px; margin-top: 1px; }
+  .inkwell-error-cta {
+    appearance: none; border: 1px solid #fca5a5; background: #fef2f2;
+    color: #b91c1c; font: inherit; font-weight: 600; font-size: 11.5px;
+    padding: 4px 10px; border-radius: 8px; cursor: pointer;
+    transition: background-color 120ms ease, border-color 120ms ease;
+    margin-left: auto;
+  }
+  .inkwell-error-cta:hover { background: #fee2e2; border-color: #f87171; }
+  .inkwell-error-cta:focus-visible { outline: 2px solid #ef4444; outline-offset: 1px; }
 
   /* Footer ----------------------------------------------------- */
   .footer {
@@ -624,6 +636,12 @@ const POPOVER_STYLES = `
     .preview { color:#f4f4f5; }
     .preview-empty { color:#71717a; }
     .err { color:#fca5a5; }
+    .inkwell-error-cta {
+      background: rgba(239, 68, 68, 0.12);
+      border-color: rgba(239, 68, 68, 0.45);
+      color: #fecaca;
+    }
+    .inkwell-error-cta:hover { background: rgba(239, 68, 68, 0.22); border-color: rgba(248, 113, 113, 0.6); }
     .footer { background:#1c1c1f; border-color:#27272a; }
     .meta { color:#71717a; }
     .kbd { background:#27272a; border-color:#3f3f46; color:#a1a1aa; }
@@ -721,6 +739,10 @@ interface State {
   preview: string;
   streamId: string | null;
   error: string | null;
+  /** When set, the error UI also shows a recovery CTA. `refresh` means
+   *  the extension was reloaded and this page needs a refresh to keep
+   *  using Inkwell. */
+  errorAction: "refresh" | null;
   usageMeta: string;
   hasOutput: boolean;
   // Language controls.
@@ -1083,6 +1105,7 @@ export const mountPopover = async ({
     preview: "",
     streamId: null,
     error: null,
+    errorAction: null,
     usageMeta: KBD_SHORTCUT_FULL,
     hasOutput: false,
     sourceLang: initialSourceLang,
@@ -1255,6 +1278,14 @@ export const mountPopover = async ({
       const msg = document.createElement("span");
       msg.textContent = state.error;
       errEl.append(icon, msg);
+      if (state.errorAction === "refresh") {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = "Refresh page";
+        btn.className = "inkwell-error-cta";
+        btn.addEventListener("click", () => window.location.reload());
+        errEl.append(btn);
+      }
     } else {
       errEl.style.display = "none";
     }
@@ -1437,6 +1468,7 @@ export const mountPopover = async ({
     state.preview = "";
     state.hasOutput = false;
     state.error = null;
+    state.errorAction = null;
     state.usageMeta = KBD_SHORTCUT_FULL;
     pendingHistory = null;
     renderAll();
@@ -1497,9 +1529,12 @@ export const mountPopover = async ({
 
   sourceEl.addEventListener("input", () => {
     // Clearing a stale error as soon as the user edits the text feels
-    // responsive; the next generate revalidates anyway.
-    if (state.error) {
+    // responsive; the next generate revalidates anyway. The refresh CTA
+    // is the exception — editing doesn't fix an invalidated extension
+    // context, so we keep it visible.
+    if (state.error && state.errorAction !== "refresh") {
       state.error = null;
+      state.errorAction = null;
       renderPreviewState();
     }
     if (state.sourceLang === "auto") scheduleDetection(sourceEl.value);
@@ -1775,6 +1810,7 @@ export const mountPopover = async ({
 
     state.preview = "";
     state.error = null;
+    state.errorAction = null;
     state.usageMeta = "Streaming…";
     state.hasOutput = false;
     state.streaming = true;
@@ -1807,7 +1843,13 @@ export const mountPopover = async ({
     } catch (err: unknown) {
       state.streaming = false;
       state.streamId = null;
-      state.error = err instanceof Error ? err.message : "Failed to start.";
+      if (err instanceof ExtensionContextInvalidatedError) {
+        state.error = err.message;
+        state.errorAction = "refresh";
+      } else {
+        state.error = err instanceof Error ? err.message : "Failed to start.";
+        state.errorAction = null;
+      }
       pendingHistory = null;
       renderAll();
     }

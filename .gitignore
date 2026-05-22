@@ -41,3 +41,6 @@ coverage/
 
 # Misc
 .turbo
+
+# Docs kept on disk for external publishing (Medium, etc.), not tracked
+docs/production-blueprint.md

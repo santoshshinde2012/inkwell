@@ -36,7 +36,10 @@ import {
   languageDisplayName,
   languageLabel,
 } from "@inkwell/shared";
-import { sendToBackground } from "../lib/messaging";
+import {
+  ExtensionContextInvalidatedError,
+  sendToBackground,
+} from "../lib/messaging";
 import { localStore } from "../lib/storage";
 import { historyStore, type NewHistoryEntry } from "../lib/history";
 import {
@@ -128,6 +131,9 @@ export function AssistantView({
   const [streaming, setStreaming] = useState(false);
   const [usageMeta, setUsageMeta] = useState<string>(`Press ${KBD} to generate`);
   const [error, setError] = useState<string | null>(null);
+  // When set, the error UI also offers a recovery CTA. "refresh" means
+  // the extension context is gone and the panel needs a reload.
+  const [errorAction, setErrorAction] = useState<"refresh" | null>(null);
   const [copied, setCopied] = useState(false);
   const streamIdRef = useRef<string | null>(null);
   const pendingHistoryRef = useRef<NewHistoryEntry | null>(null);
@@ -447,7 +453,12 @@ export function AssistantView({
       setStreaming(false);
       streamIdRef.current = null;
       pendingHistoryRef.current = null;
-      setError(err instanceof Error ? err.message : "Failed to start.");
+      if (err instanceof ExtensionContextInvalidatedError) {
+        setError(err.message);
+        setErrorAction("refresh");
+      } else {
+        setError(err instanceof Error ? err.message : "Failed to start.");
+      }
     }
   }, [
     streaming,
@@ -542,6 +553,7 @@ export function AssistantView({
             preview={preview}
             streaming={streaming}
             error={error}
+            errorAction={errorAction}
             canCopy={!!preview && !error}
             copied={copied}
             onCopy={() => void copy()}
@@ -832,6 +844,7 @@ function ResultCard({
   preview,
   streaming,
   error,
+  errorAction,
   canCopy,
   copied,
   onCopy,
@@ -842,6 +855,7 @@ function ResultCard({
   preview: string;
   streaming: boolean;
   error: string | null;
+  errorAction: "refresh" | null;
   canCopy: boolean;
   copied: boolean;
   onCopy: () => void;
@@ -898,9 +912,20 @@ function ResultCard({
         }`}
       >
         {state === "error" ? (
-          <div className="flex items-start gap-2">
-            <XIcon size={14} />
-            <span>{error}</span>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-start gap-2">
+              <XIcon size={14} />
+              <span>{error}</span>
+            </div>
+            {errorAction === "refresh" && (
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="self-start rounded-lg border border-red-900/60 bg-red-950/40 px-2.5 py-1 text-[11px] font-semibold text-red-100 transition-colors hover:bg-red-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-400"
+              >
+                Reload side panel
+              </button>
+            )}
           </div>
         ) : preview ? (
           <div
