@@ -303,7 +303,9 @@ function ProfileCard({ settings, patch, flash }: SectionProps): JSX.Element {
             rows={3}
             onChange={(e) => setAboutMe(e.target.value)}
             placeholder="e.g. I'm a PM. I prefer concise, friendly replies."
-            className="block w-full resize-y rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2 text-[12.5px] text-zinc-100 placeholder-zinc-500 transition-colors focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
+            // Cap the resize handle's reach — without max-h users can drag
+            // the textarea past the section and overlap Tone / Model.
+            className="block max-h-48 w-full resize-y rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2 text-[12.5px] text-zinc-100 placeholder-zinc-500 transition-colors focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
           />
           <span className="mt-1 block text-right text-[10px] text-zinc-500">
             {aboutMe.length}/2000

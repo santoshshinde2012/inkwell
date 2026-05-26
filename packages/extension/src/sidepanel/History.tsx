@@ -19,7 +19,9 @@ import {
   languageLabel,
 } from "@inkwell/shared";
 import {
+  ENTRIES_WARN_AT,
   historyStore,
+  MAX_ENTRIES as HISTORY_MAX_ENTRIES,
   STORAGE_KEY as HISTORY_STORAGE_KEY,
   type HistoryEntry,
 } from "../lib/history";
@@ -50,6 +52,17 @@ export function HistoryView({
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
+  // Hoisted out of `HistoryRow` so only a single ConfirmDialog ever lives
+  // in the DOM regardless of how many rows are visible. Stores the id of
+  // the entry the user has asked to delete (null = no prompt open).
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  // Undo buffer — entries the user has just deleted, kept around for
+  // ~6 seconds while the toast is on screen.
+  const [undoState, setUndoState] = useState<{
+    entries: HistoryEntry[];
+    label: string;
+  } | null>(null);
+  const undoTimerRef = useRef<number | null>(null);
 
   const refresh = useCallback(async () => {
     const next = await historyStore.list();
@@ -71,21 +84,66 @@ export function HistoryView({
     return () => chrome.storage.onChanged.removeListener(onChanged);
   }, [refresh]);
 
+  const scheduleUndoClear = useCallback((): void => {
+    if (undoTimerRef.current !== null) {
+      window.clearTimeout(undoTimerRef.current);
+    }
+    undoTimerRef.current = window.setTimeout(() => {
+      setUndoState(null);
+      undoTimerRef.current = null;
+    }, 6000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (undoTimerRef.current !== null) {
+        window.clearTimeout(undoTimerRef.current);
+      }
+    };
+  }, []);
+
   const handleDelete = useCallback(
     async (id: string) => {
+      const removed = entries?.find((e) => e.id === id) ?? null;
       await historyStore.remove(id);
       setEntries((prev) => (prev ? prev.filter((e) => e.id !== id) : prev));
       setOpenId((cur) => (cur === id ? null : cur));
+      setPendingDeleteId((cur) => (cur === id ? null : cur));
+      if (removed) {
+        setUndoState({ entries: [removed], label: "Entry deleted" });
+        scheduleUndoClear();
+      }
     },
-    [],
+    [entries, scheduleUndoClear],
   );
 
   const handleClearAll = useCallback(async () => {
+    const snapshot = entries ?? [];
     await historyStore.clear();
     setEntries([]);
     setOpenId(null);
+    setPendingDeleteId(null);
     setConfirmClear(false);
-  }, []);
+    if (snapshot.length > 0) {
+      setUndoState({
+        entries: snapshot,
+        label: `Cleared ${snapshot.length} ${snapshot.length === 1 ? "entry" : "entries"}`,
+      });
+      scheduleUndoClear();
+    }
+  }, [entries, scheduleUndoClear]);
+
+  const handleUndo = useCallback(async () => {
+    if (!undoState) return;
+    await historyStore.restore(undoState.entries);
+    // The storage onChanged listener will re-fetch and update `entries`,
+    // so we just dismiss the toast here.
+    setUndoState(null);
+    if (undoTimerRef.current !== null) {
+      window.clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = null;
+    }
+  }, [undoState]);
 
   const filtered = useMemo(() => {
     if (!entries) return null;
@@ -139,8 +197,14 @@ export function HistoryView({
       </header>
 
       {entries && entries.length > 0 && (
-        <div className="border-b border-zinc-800/70 px-3 py-2">
+        <div className="space-y-2 border-b border-zinc-800/70 px-3 py-2">
           <SearchField value={query} onChange={setQuery} />
+          {entries.length >= ENTRIES_WARN_AT && (
+            <QuotaNotice
+              count={entries.length}
+              max={HISTORY_MAX_ENTRIES}
+            />
+          )}
         </div>
       )}
 
@@ -162,7 +226,7 @@ export function HistoryView({
                 onToggle={(id) =>
                   setOpenId((cur) => (cur === id ? null : id))
                 }
-                onDelete={(id) => void handleDelete(id)}
+                onAskDelete={setPendingDeleteId}
               />
             ))}
           </div>
@@ -172,11 +236,28 @@ export function HistoryView({
       {confirmClear && (
         <ConfirmDialog
           title="Clear all history?"
-          body="This removes every recorded action on this device. Cannot be undone."
+          body="Removes every recorded action on this device. Tap Undo within 6 seconds to restore."
           confirmLabel="Clear all"
           danger
           onCancel={() => setConfirmClear(false)}
           onConfirm={() => void handleClearAll()}
+        />
+      )}
+      {pendingDeleteId && (
+        <ConfirmDialog
+          title="Delete this entry?"
+          body="Removes this single record from your history. Tap Undo to restore."
+          confirmLabel="Delete"
+          danger
+          onCancel={() => setPendingDeleteId(null)}
+          onConfirm={() => void handleDelete(pendingDeleteId)}
+        />
+      )}
+      {undoState && (
+        <UndoToast
+          label={undoState.label}
+          onUndo={() => void handleUndo()}
+          onDismiss={() => setUndoState(null)}
         />
       )}
     </div>
@@ -225,13 +306,13 @@ function DayGroup({
   entries,
   openId,
   onToggle,
-  onDelete,
+  onAskDelete,
 }: {
   label: string;
   entries: HistoryEntry[];
   openId: string | null;
   onToggle: (id: string) => void;
-  onDelete: (id: string) => void;
+  onAskDelete: (id: string) => void;
 }): JSX.Element {
   return (
     <section>
@@ -245,7 +326,7 @@ function DayGroup({
             entry={e}
             expanded={openId === e.id}
             onToggle={() => onToggle(e.id)}
-            onDelete={() => onDelete(e.id)}
+            onAskDelete={() => onAskDelete(e.id)}
           />
         ))}
       </ul>
@@ -257,15 +338,14 @@ function HistoryRow({
   entry,
   expanded,
   onToggle,
-  onDelete,
+  onAskDelete,
 }: {
   entry: HistoryEntry;
   expanded: boolean;
   onToggle: () => void;
-  onDelete: () => void;
+  onAskDelete: () => void;
 }): JSX.Element {
   const [copied, setCopied] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const copyTimerRef = useRef<number | null>(null);
 
   const copyOutput = useCallback(async () => {
@@ -348,7 +428,7 @@ function HistoryRow({
             </button>
             <button
               type="button"
-              onClick={() => setConfirmDelete(true)}
+              onClick={onAskDelete}
               className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-[11.5px] font-medium text-zinc-300 transition-colors hover:border-red-900/60 hover:bg-red-950/30 hover:text-red-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-400"
             >
               <TrashIcon size={12} />
@@ -356,20 +436,6 @@ function HistoryRow({
             </button>
           </div>
         </div>
-      )}
-
-      {confirmDelete && (
-        <ConfirmDialog
-          title="Delete this entry?"
-          body="Removes this single record from your history. Cannot be undone."
-          confirmLabel="Delete"
-          danger
-          onCancel={() => setConfirmDelete(false)}
-          onConfirm={() => {
-            setConfirmDelete(false);
-            onDelete();
-          }}
-        />
       )}
     </li>
   );
@@ -591,6 +657,100 @@ function ConfirmDialog({
             {confirmLabel}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Quota notice — inline warning surfaced once the user is within 50 records
+// of the on-device cap. Lets them know that further actions silently drop
+// the oldest entries.
+// ---------------------------------------------------------------------------
+
+function QuotaNotice({ count, max }: { count: number; max: number }): JSX.Element {
+  const atCap = count >= max;
+  return (
+    <div
+      role="status"
+      className={`flex items-start gap-2 rounded-lg border px-2.5 py-1.5 text-[10.5px] leading-snug ${
+        atCap
+          ? "border-amber-900/60 bg-amber-950/30 text-amber-200"
+          : "border-zinc-800 bg-zinc-900/60 text-zinc-400"
+      }`}
+    >
+      <span
+        aria-hidden="true"
+        className={`mt-px inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full ${
+          atCap ? "bg-amber-500/20 text-amber-200" : "bg-zinc-800 text-zinc-400"
+        }`}
+      >
+        <svg
+          width="9"
+          height="9"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 8v4" />
+          <path d="M12 16h.01" />
+        </svg>
+      </span>
+      <span>
+        <span className="font-semibold">
+          {count} / {max}
+        </span>{" "}
+        {atCap
+          ? "— at the on-device limit. Each new action drops the oldest entry."
+          : "— close to the on-device limit. Older entries are dropped first."}
+      </span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Undo toast — bottom-anchored, auto-dismisses on a 6s timer in the parent
+// ---------------------------------------------------------------------------
+
+function UndoToast({
+  label,
+  onUndo,
+  onDismiss,
+}: {
+  label: string;
+  onUndo: () => void;
+  onDismiss: () => void;
+}): JSX.Element {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="pointer-events-none absolute inset-x-0 bottom-3 z-40 flex justify-center px-3"
+    >
+      <div className="pointer-events-auto flex items-center gap-3 rounded-full bg-zinc-100 px-3.5 py-1.5 text-[12px] font-medium text-zinc-900 shadow-lg shadow-black/40">
+        <span className="inline-flex items-center gap-1.5">
+          <TrashIcon size={12} />
+          {label}
+        </span>
+        <button
+          type="button"
+          onClick={onUndo}
+          className="rounded-full bg-indigo-500 px-2.5 py-0.5 text-[11px] font-semibold text-white transition-colors hover:bg-indigo-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-300"
+        >
+          Undo
+        </button>
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Dismiss"
+          className="rounded-full p-0.5 text-zinc-500 transition-colors hover:bg-zinc-200 hover:text-zinc-900"
+        >
+          <XIcon size={11} />
+        </button>
       </div>
     </div>
   );

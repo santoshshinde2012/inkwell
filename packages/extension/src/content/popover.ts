@@ -113,6 +113,13 @@ const ICON_CHEVRON_DOWN = `<svg ${SVG_ATTRS}><path d="m6 9 6 6 6-6"/></svg>`;
 const ICON_SLIDERS = `<svg ${SVG_ATTRS}><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><circle cx="14" cy="4" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="16" cy="20" r="2"/></svg>`;
 const ICON_COPY = `<svg ${SVG_ATTRS}><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
 const ICON_TRANSLATE = `<svg ${SVG_ATTRS}><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>`;
+// Lucide "panel-right-open" — represents the Chrome side panel docked on
+// the right. Used by the header button that hands the popover's working
+// text off to the side panel.
+const ICON_PANEL_RIGHT = `<svg ${SVG_ATTRS}><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/><path d="m8 9 3 3-3 3"/></svg>`;
+// Lucide "grip-vertical" — six-dot drag affordance. Shown on hover at the
+// far-left of the header so users discover the popover is draggable.
+const ICON_GRIP = `<svg ${SVG_ATTRS}><circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/></svg>`;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -230,11 +237,36 @@ const POPOVER_STYLES = `
   .pop ::selection { background: rgba(99, 102, 241, 0.22); }
 
   /* Header ----------------------------------------------------- */
+  /* The header doubles as a drag handle. cursor:grab invites the
+     gesture; touch-action:none keeps mobile / pen pointers from
+     scrolling the page mid-drag; user-select:none stops the title
+     from being highlighted by a drag start. Child buttons re-claim
+     their own pointer cursor below. */
   .head {
     display: flex; align-items: center; gap: 9px;
     padding: 11px 14px;
     border-bottom: 1px solid #ececef;
+    cursor: grab;
+    user-select: none;
+    touch-action: none;
   }
+  .head.dragging { cursor: grabbing; }
+  .head .icon-btn,
+  .head .brand-icon { cursor: pointer; }
+  .head .brand-icon { cursor: grab; }
+  .head.dragging .brand-icon { cursor: grabbing; }
+  /* Grip dots — visible on hover, fade in to confirm drag is supported.
+     Sits to the left of the brand mark without shifting the layout. */
+  .grip {
+    color: #cbd5e1;
+    display: inline-flex; align-items: center;
+    width: 12px; flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 140ms;
+  }
+  .head:hover .grip,
+  .head.dragging .grip { opacity: 1; }
+  .grip svg { width: 12px; height: 12px; }
   .brand-icon {
     width: 24px; height: 24px;
     display: inline-flex; align-items: center; justify-content: center;
@@ -606,6 +638,7 @@ const POPOVER_STYLES = `
         0 24px 56px -12px rgba(0,0,0,0.7);
     }
     .head { border-color:#27272a; }
+    .grip { color:#52525b; }
     .title { color:#f4f4f5; } .title-sub { color:#a1a1aa; }
     .icon-btn { color:#a1a1aa; } .icon-btn:hover { background:#27272a; color:#f4f4f5; }
     .actions { background:#27272a; }
@@ -821,9 +854,15 @@ export const mountPopover = async ({
   root.setAttribute("aria-labelledby", "inkwell-pop-title");
   root.tabIndex = -1;
 
-  // Header
+  // Header. The bar itself doubles as a drag handle (see drag wiring below)
+  // — a grip glyph on the left reveals the affordance on hover.
   const head = document.createElement("div");
   head.className = "head";
+  head.title = "Drag to move";
+  const grip = document.createElement("span");
+  grip.className = "grip";
+  grip.setAttribute("aria-hidden", "true");
+  grip.innerHTML = ICON_GRIP;
   const brand = document.createElement("span");
   brand.className = "brand-icon";
   brand.innerHTML = ICON_DROP;
@@ -845,13 +884,19 @@ export const mountPopover = async ({
   titleWrap.append(title, titleSub);
   const headSpacer = document.createElement("div");
   headSpacer.className = "head-spacer";
+  const expandBtn = document.createElement("button");
+  expandBtn.type = "button";
+  expandBtn.className = "icon-btn";
+  expandBtn.setAttribute("aria-label", "Open in side panel");
+  expandBtn.title = "Open in side panel";
+  expandBtn.innerHTML = ICON_PANEL_RIGHT;
   const closeBtn = document.createElement("button");
   closeBtn.type = "button";
   closeBtn.className = "icon-btn";
   closeBtn.setAttribute("aria-label", "Close (Esc)");
   closeBtn.title = "Close (Esc)";
   closeBtn.innerHTML = ICON_X;
-  head.append(brand, titleWrap, headSpacer, closeBtn);
+  head.append(grip, brand, titleWrap, headSpacer, expandBtn, closeBtn);
 
   // Body
   const body = document.createElement("div");
@@ -1542,6 +1587,110 @@ export const mountPopover = async ({
 
   closeBtn.addEventListener("click", () => teardown(false));
 
+  // ---- Header drag handle -----------------------------------------------
+  // Anywhere on the header (other than its child buttons) starts a drag.
+  // Pointer events cover mouse, pen and touch with one listener pair.
+  // setPointerCapture means the move/up events keep firing on the head
+  // even if the cursor slips outside it mid-drag.
+  let dragPointerId: number | null = null;
+  let dragOriginX = 0;
+  let dragOriginY = 0;
+  let dragStartLeft = 0;
+  let dragStartTop = 0;
+
+  const isInteractiveTarget = (el: EventTarget | null): boolean => {
+    if (!(el instanceof Element)) return false;
+    // Buttons inside the header (close, expand) — let those fire instead.
+    return el.closest("button") != null;
+  };
+
+  const onHeadPointerDown = (e: PointerEvent): void => {
+    if (e.button !== 0) return;
+    if (isInteractiveTarget(e.target)) return;
+    // Lock the popover's current position into absolute px so the move
+    // handler has stable origins to work against. parseFloat tolerates
+    // both "12px" and "" (treated as NaN, falls back to bounding rect).
+    const rect = root.getBoundingClientRect();
+    dragStartLeft = Number.isFinite(parseFloat(root.style.left))
+      ? parseFloat(root.style.left)
+      : rect.left;
+    dragStartTop = Number.isFinite(parseFloat(root.style.top))
+      ? parseFloat(root.style.top)
+      : rect.top;
+    dragOriginX = e.clientX;
+    dragOriginY = e.clientY;
+    dragPointerId = e.pointerId;
+    head.classList.add("dragging");
+    head.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  };
+
+  const onHeadPointerMove = (e: PointerEvent): void => {
+    if (dragPointerId !== e.pointerId) return;
+    const margin = 8;
+    const w = root.offsetWidth || 420;
+    const h = root.offsetHeight || 360;
+    let nextLeft = dragStartLeft + (e.clientX - dragOriginX);
+    let nextTop = dragStartTop + (e.clientY - dragOriginY);
+    // Clamp so the popover always overlaps the viewport — never lets the
+    // user lose it off-screen.
+    nextLeft = Math.min(
+      window.innerWidth - w - margin,
+      Math.max(margin, nextLeft),
+    );
+    nextTop = Math.min(
+      window.innerHeight - h - margin,
+      Math.max(margin, nextTop),
+    );
+    root.style.left = `${nextLeft}px`;
+    root.style.top = `${nextTop}px`;
+  };
+
+  const onHeadPointerUp = (e: PointerEvent): void => {
+    if (dragPointerId !== e.pointerId) return;
+    dragPointerId = null;
+    head.classList.remove("dragging");
+    if (head.hasPointerCapture(e.pointerId)) {
+      head.releasePointerCapture(e.pointerId);
+    }
+  };
+
+  head.addEventListener("pointerdown", onHeadPointerDown);
+  head.addEventListener("pointermove", onHeadPointerMove);
+  head.addEventListener("pointerup", onHeadPointerUp);
+  head.addEventListener("pointercancel", onHeadPointerUp);
+
+  // ---- "Open in side panel" handoff -------------------------------------
+  // Sends the current source text + selected action to the background,
+  // which opens the Side Panel for this tab and stashes the text. We
+  // tear down on success so the popover doesn't linger over the page; on
+  // failure (e.g. older Chrome without chrome.sidePanel.open) we surface
+  // the error inline and leave the popover up.
+  const handleExpand = async (): Promise<void> => {
+    const text =
+      sourceEl.value || (source.kind === "selection" ? source.text : "");
+    try {
+      const ack = await sendToBackground<{ ok: boolean; error?: { message?: string } }>({
+        type: MESSAGE_TYPES.OPEN_SIDE_PANEL_FROM_POPOVER,
+        text: text.trim() || undefined,
+        action: state.action,
+      });
+      if (!ack?.ok) {
+        state.error = ack?.error?.message ?? "Couldn't open the side panel.";
+        state.errorAction = null;
+        renderPreviewState();
+        return;
+      }
+      teardown(false);
+    } catch (err) {
+      state.error =
+        err instanceof Error ? err.message : "Couldn't open the side panel.";
+      state.errorAction = null;
+      renderPreviewState();
+    }
+  };
+  expandBtn.addEventListener("click", () => void handleExpand());
+
   const ready = (): boolean =>
     state.hasOutput && !!state.preview && !state.error;
 
@@ -1945,6 +2094,15 @@ export const mountPopover = async ({
     document.removeEventListener("mousedown", onDocClick, true);
     if (sRoot.host) sRoot.host.removeEventListener("keydown", keydown, true);
     root.removeEventListener("keydown", keydown, true);
+    head.removeEventListener("pointerdown", onHeadPointerDown);
+    head.removeEventListener("pointermove", onHeadPointerMove);
+    head.removeEventListener("pointerup", onHeadPointerUp);
+    head.removeEventListener("pointercancel", onHeadPointerUp);
+    // Release any in-progress drag capture so the cancelled pointer
+    // doesn't keep firing after the popover's DOM is gone.
+    if (dragPointerId !== null && head.hasPointerCapture(dragPointerId)) {
+      head.releasePointerCapture(dragPointerId);
+    }
     window.clearTimeout(copyResetTimer);
     window.clearTimeout(detectTimer);
     if (state.streamId) cancelStream();

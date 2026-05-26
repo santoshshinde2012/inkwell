@@ -286,8 +286,15 @@ function LanguageRow({
 }): JSX.Element {
   return (
     <div
+      // `minmax(0, 1fr)` (not bare `1fr`) lets the columns actually shrink
+      // below their content width, which is what makes the truncate +
+      // text-overflow rules on the inner <select> kick in. Without it,
+      // long language names (Malayalam, Portuguese (Brazil)) push the
+      // grid wider than the sheet and the second column wraps under.
       className={`grid items-end gap-2 ${
-        showTarget ? "grid-cols-[1fr_auto_1fr]" : "grid-cols-1"
+        showTarget
+          ? "grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]"
+          : "grid-cols-1"
       }`}
     >
       <SelectField

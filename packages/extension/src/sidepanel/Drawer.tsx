@@ -53,6 +53,7 @@ export function Drawer({
   onOpenFullSettings,
 }: DrawerProps): JSX.Element | null {
   const closeRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
 
   useEffect(() => {
@@ -60,10 +61,39 @@ export function Drawer({
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     closeRef.current?.focus();
+
+    // Collect every focusable inside the panel — used to wrap Tab around
+    // so keyboard users can't tab-escape the drawer into the obscured
+    // content behind. Recomputed each keypress in case the nav list or
+    // CTA visibility changed (e.g. badge appeared / disappeared).
+    const focusables = (): HTMLElement[] => {
+      const root = panelRef.current;
+      if (!root) return [];
+      return Array.from(
+        root.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((el) => !el.hasAttribute("disabled"));
+    };
+
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === "Escape") {
         e.preventDefault();
         onClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const list = focusables();
+      if (list.length === 0) return;
+      const firstEl = list[0]!;
+      const lastEl = list[list.length - 1]!;
+      const active = document.activeElement as HTMLElement | null;
+      if (e.shiftKey && (active === firstEl || !panelRef.current?.contains(active))) {
+        e.preventDefault();
+        lastEl.focus();
+      } else if (!e.shiftKey && (active === lastEl || !panelRef.current?.contains(active))) {
+        e.preventDefault();
+        firstEl.focus();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -94,6 +124,7 @@ export function Drawer({
     >
       <style>{DRAWER_KEYFRAMES}</style>
       <div
+        ref={panelRef}
         className="absolute inset-y-0 left-0 flex w-[88%] max-w-[320px] flex-col border-r border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/60"
         onClick={(e) => e.stopPropagation()}
         style={{ animation: "drawer-slide 200ms ease-out" }}

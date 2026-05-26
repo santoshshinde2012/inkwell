@@ -569,6 +569,7 @@ function BackendTab({
           {test.kind !== "idle" && (
             <div
               role="status"
+              aria-live="polite"
               className={`flex items-start gap-2 rounded-md px-3 py-2 text-xs ${
                 test.kind === "ok"
                   ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"
@@ -577,10 +578,10 @@ function BackendTab({
                     : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"
               }`}
             >
-              <span aria-hidden="true">
+              <span aria-hidden="true" className="mt-px inline-flex">
                 {test.kind === "ok" && "✓"}
                 {test.kind === "error" && "✗"}
-                {test.kind === "testing" && "…"}
+                {test.kind === "testing" && <TestSpinner />}
               </span>
               <span>
                 {test.kind === "testing"
@@ -626,6 +627,29 @@ function BackendTab({
         </p>
       </Card>
     </>
+  );
+}
+
+/**
+ * Compact animated spinner used inline next to "Testing connection…".
+ * Sized to match the surrounding emoji-style status glyphs (✓ / ✗) so the
+ * row height doesn't jump when the test resolves.
+ */
+function TestSpinner(): JSX.Element {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      className="animate-spin"
+      aria-hidden="true"
+    >
+      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+    </svg>
   );
 }
 
@@ -879,6 +903,23 @@ function HistoryTab(): JSX.Element {
     }
     return LANGUAGE_CATALOG.map((l) => l.id).filter((id) => set.has(id));
   }, [entries]);
+
+  // If the user filtered by a value (site / language) that has since been
+  // deleted, reset that filter rather than leaving them staring at a
+  // phantom selection with zero matches.
+  useEffect(() => {
+    if (siteFilter !== "all" && !sites.includes(siteFilter)) {
+      setSiteFilter("all");
+    }
+  }, [siteFilter, sites]);
+  useEffect(() => {
+    if (
+      languageFilter !== "all" &&
+      !(languages as string[]).includes(languageFilter)
+    ) {
+      setLanguageFilter("all");
+    }
+  }, [languageFilter, languages]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

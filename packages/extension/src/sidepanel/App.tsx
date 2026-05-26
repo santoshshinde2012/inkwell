@@ -12,7 +12,7 @@
 // and scroll positions survive a hop to another view.
 
 import { useCallback, useEffect, useState } from "react";
-import { AssistantView } from "./Assistant";
+import { AssistantView } from "./assistant";
 import { HistoryView } from "./History";
 import { SettingsView } from "./Settings";
 import { Drawer } from "./Drawer";
@@ -39,24 +39,33 @@ export function App(): JSX.Element {
   const [displayName, setDisplayName] = useState<string>("");
   const [historyCount, setHistoryCount] = useState<number>(0);
 
-  // Initial backend probe — drives the drawer profile status row +
-  // Assistant top-bar subtitle.
+  // Backend health probe — drives the drawer profile status row + the
+  // Assistant top-bar subtitle. Runs once on mount and again each time
+  // the panel regains visibility (e.g. user comes back from a different
+  // window) so a backend that went down while the panel was idle gets
+  // re-evaluated promptly.
   useEffect(() => {
     let cancelled = false;
-    void localStore
-      .getAll()
-      .catch(() => null)
-      .then(async (s) => {
-        if (s) setDisplayName(s.displayName);
-        return probeBackend(s?.backendUrl, s?.apiKey);
-      })
-      .then((r) => {
-        if (cancelled) return;
-        setBackendStatus(r.status);
-        setBackendUrl(r.url);
-      });
+    const probe = async (markChecking: boolean): Promise<void> => {
+      if (markChecking) setBackendStatus("checking");
+      const s = await localStore.getAll().catch(() => null);
+      if (cancelled) return;
+      if (s) setDisplayName(s.displayName);
+      const r = await probeBackend(s?.backendUrl, s?.apiKey);
+      if (cancelled) return;
+      setBackendStatus(r.status);
+      setBackendUrl(r.url);
+    };
+
+    void probe(false);
+
+    const onVisibility = (): void => {
+      if (document.visibilityState === "visible") void probe(true);
+    };
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       cancelled = true;
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);
 

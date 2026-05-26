@@ -288,3 +288,24 @@ export function PlusIcon(p: IconProps): JSX.Element {
   );
 }
 
+export function RegenerateIcon({ size = 12, ...rest }: IconProps): JSX.Element {
+  return (
+    <svg {...svg({ size, ...rest })} aria-hidden="true">
+      <path d="M21 12a9 9 0 0 0-15-6.7L3 8" />
+      <path d="M3 3v5h5" />
+      <path d="M3 12a9 9 0 0 0 15 6.7l3-2.7" />
+      <path d="M21 21v-5h-5" />
+    </svg>
+  );
+}
+
+export function AlertTriangleIcon({ size = 14, ...rest }: IconProps): JSX.Element {
+  return (
+    <svg {...svg({ size, ...rest })} aria-hidden="true">
+      <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+      <line x1="12" y1="9" x2="12" y2="13" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+  );
+}
+

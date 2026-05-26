@@ -13,7 +13,12 @@
 import type { Action, LanguageId } from "@inkwell/shared";
 
 export const STORAGE_KEY = "history.entries";
-const MAX_ENTRIES = 250;
+/** Hard cap on the number of records kept on-device. Oldest entries are
+ *  dropped first once this is exceeded. Exported so the UI can warn users
+ *  who are approaching it. */
+export const MAX_ENTRIES = 250;
+/** Threshold at which we start surfacing a soft warning about the cap. */
+export const ENTRIES_WARN_AT = 200;
 const MAX_TEXT_CHARS = 2000;
 
 export interface HistoryEntry {
@@ -102,5 +107,36 @@ export const historyStore = {
   /** Delete the entire history. */
   async clear(): Promise<void> {
     await chrome.storage.local.remove(STORAGE_KEY);
+  },
+
+  /**
+   * Re-insert previously-deleted entries with their original ids and
+   * timestamps preserved. Powers the History view's undo-delete toast,
+   * which keeps a copy of the removed records in memory until the toast
+   * dismisses.
+   *
+   * Behaviour:
+   *   - de-duplicates by id (an entry that already exists is a no-op)
+   *   - sorts the merged list newest-first by createdAt
+   *   - caps at MAX_ENTRIES, dropping the oldest first
+   */
+  async restore(entries: HistoryEntry[]): Promise<void> {
+    try {
+      const existing = await readAll();
+      const seen = new Set<string>();
+      const merged: HistoryEntry[] = [];
+      for (const e of [...entries, ...existing]) {
+        if (seen.has(e.id)) continue;
+        seen.add(e.id);
+        merged.push(e);
+      }
+      merged.sort((a, b) => b.createdAt - a.createdAt);
+      await chrome.storage.local.set({
+        [STORAGE_KEY]: merged.slice(0, MAX_ENTRIES),
+      });
+    } catch {
+      // Best-effort; a failed restore leaves the user no worse off than
+      // before they clicked Undo.
+    }
   },
 };

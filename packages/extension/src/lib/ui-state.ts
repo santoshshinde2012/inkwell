@@ -150,3 +150,63 @@ export const saveLastUsed = (s: LastUsedPersistable): void => {
     /* storage unavailable — non-fatal */
   }
 };
+
+// ---------------------------------------------------------------------------
+// Popover → Side panel hand-off
+// ---------------------------------------------------------------------------
+//
+// When the user clicks "Open in side panel" from the in-page popover, the
+// background writes a small record here. The side panel reads it on mount
+// (and on storage change for already-open panels), pre-fills its input,
+// and clears the key. The timestamp lets readers ignore stale handoffs
+// (e.g. user opens the side panel manually hours later — they shouldn't
+// be surprised by text from a long-dismissed popover).
+
+export const HANDOFF_KEY = "ui.handoff";
+/** Handoffs older than this are ignored. 30 s comfortably covers the
+ *  worst case of a slow `chrome.sidePanel.open`, but is short enough that
+ *  a stale record can't surprise the user on a later panel open. */
+export const HANDOFF_MAX_AGE_MS = 30_000;
+
+export interface Handoff {
+  text?: string;
+  action?: Action;
+  createdAt: number;
+}
+
+const isHandoff = (v: unknown): v is Handoff =>
+  !!v &&
+  typeof v === "object" &&
+  typeof (v as { createdAt?: unknown }).createdAt === "number";
+
+/** Read the handoff, if any, AND clear it in the same trip. Returns null
+ *  when nothing is staged, the record is malformed, or it's older than
+ *  HANDOFF_MAX_AGE_MS. */
+export const consumeHandoff = (): Promise<Handoff | null> => {
+  return new Promise((resolve) => {
+    try {
+      chrome.storage.local.get(HANDOFF_KEY, (result) => {
+        const v = result?.[HANDOFF_KEY];
+        // Always remove — even a stale or malformed record should be
+        // wiped so it can't reappear on a later read.
+        void chrome.storage.local.remove(HANDOFF_KEY);
+        if (!isHandoff(v)) return resolve(null);
+        if (Date.now() - v.createdAt > HANDOFF_MAX_AGE_MS) return resolve(null);
+        resolve(v);
+      });
+    } catch {
+      resolve(null);
+    }
+  });
+};
+
+/** Stash a handoff for the side panel to pick up. Used by the background
+ *  worker after opening the side panel. */
+export const stashHandoff = async (h: Omit<Handoff, "createdAt">): Promise<void> => {
+  try {
+    const record: Handoff = { ...h, createdAt: Date.now() };
+    await chrome.storage.local.set({ [HANDOFF_KEY]: record });
+  } catch {
+    /* storage unavailable — non-fatal */
+  }
+};

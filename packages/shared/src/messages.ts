@@ -30,6 +30,13 @@ export const MESSAGE_TYPES = {
 
   // Site policy lookup (Content -> Background)
   CHECK_SITE_ALLOWED: "CHECK_SITE_ALLOWED",
+
+  // Content -> Background: open the Chrome Side Panel for the current tab,
+  // carrying the popover's working text + per-request settings so the user
+  // can continue without retyping. The background must call
+  // chrome.sidePanel.open synchronously to preserve the user gesture from
+  // the popover button click.
+  OPEN_SIDE_PANEL_FROM_POPOVER: "OPEN_SIDE_PANEL_FROM_POPOVER",
 } as const;
 
 export type MessageType = (typeof MESSAGE_TYPES)[keyof typeof MESSAGE_TYPES];
@@ -111,6 +118,22 @@ export type CheckSiteAllowedResponse = z.infer<
   typeof CheckSiteAllowedResponseSchema
 >;
 
+// ---- Hand-off from popover to side panel ----------------------------------
+
+export const OpenSidePanelFromPopoverMessageSchema = z.object({
+  type: z.literal(MESSAGE_TYPES.OPEN_SIDE_PANEL_FROM_POPOVER),
+  /** Text the user was working on inside the popover, if any. The side
+   *  panel pre-fills its input from this. Capped to a sane size so the
+   *  storage write isn't an attack vector for huge payloads. */
+  text: z.string().max(20_000).optional(),
+  /** Action the user had selected at the moment they clicked "Open in
+   *  side panel". The side panel honours it instead of last-used. */
+  action: z.enum(ACTIONS).optional(),
+});
+export type OpenSidePanelFromPopoverMessage = z.infer<
+  typeof OpenSidePanelFromPopoverMessageSchema
+>;
+
 // ---- Discriminated unions for runtime routing ------------------------------
 
 export const ExtensionMessageSchema = z.discriminatedUnion("type", [
@@ -121,6 +144,7 @@ export const ExtensionMessageSchema = z.discriminatedUnion("type", [
   CompleteUsageMessageSchema,
   CompleteErrorMessageSchema,
   CheckSiteAllowedMessageSchema,
+  OpenSidePanelFromPopoverMessageSchema,
 ]);
 export type ExtensionMessage = z.infer<typeof ExtensionMessageSchema>;
 

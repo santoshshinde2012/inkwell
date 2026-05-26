@@ -13,9 +13,11 @@ import {
   ERROR_CODES,
   MESSAGE_TYPES,
   type MessageType,
+  OpenSidePanelFromPopoverMessageSchema,
 } from "@inkwell/shared";
 import { cancelStream, handleCompleteStream, type ResponseTarget } from "./api-client";
 import { evaluateSite } from "../lib/site-policy";
+import { stashHandoff } from "../lib/ui-state";
 
 // Make the toolbar action open the Side Panel rather than a popup. The
 // manifest deliberately omits `default_popup` so this call wins — clicking
@@ -103,10 +105,56 @@ const handleCheckSiteAllowed: Handler = async (rawMsg) => {
   } satisfies CheckSiteAllowedResponse;
 };
 
+/**
+ * Hand-off from the in-page popover to the Chrome Side Panel.
+ *
+ * Two things matter here:
+ *
+ *   1. `chrome.sidePanel.open` must be called synchronously from this
+ *      handler — `chrome.runtime.sendMessage` preserves the popover
+ *      button's user gesture across the dispatch, but only if we open
+ *      the panel before any `await`. The stash write fires after, so
+ *      it can't dilute the gesture context.
+ *   2. The stash write is best-effort. If it fails, the side panel just
+ *      opens empty rather than crashing.
+ */
+const handleOpenSidePanel: Handler = (rawMsg, sender) => {
+  const parsed = OpenSidePanelFromPopoverMessageSchema.safeParse(rawMsg);
+  if (!parsed.success) return { ok: false, error: parsed.error.flatten() };
+  const tabId = sender.tab?.id;
+  if (tabId == null) {
+    return { ok: false, error: { message: "Missing tab id" } };
+  }
+  try {
+    void chrome.sidePanel
+      ?.open({ tabId })
+      .catch((err) => {
+        console.warn("[inkwell] sidePanel.open failed", err);
+      });
+  } catch (err) {
+    return {
+      ok: false,
+      error: {
+        message: err instanceof Error ? err.message : "sidePanel API unavailable",
+      },
+    };
+  }
+  // Fire-and-forget the stash; it doesn't affect the gesture-bound
+  // open() above.
+  if (parsed.data.text || parsed.data.action) {
+    void stashHandoff({
+      text: parsed.data.text,
+      action: parsed.data.action,
+    });
+  }
+  return { ok: true };
+};
+
 const HANDLERS: Partial<Record<MessageType, Handler>> = {
   [MESSAGE_TYPES.COMPLETE_START]: handleCompleteStart,
   [MESSAGE_TYPES.COMPLETE_CANCEL]: handleCompleteCancel,
   [MESSAGE_TYPES.CHECK_SITE_ALLOWED]: handleCheckSiteAllowed,
+  [MESSAGE_TYPES.OPEN_SIDE_PANEL_FROM_POPOVER]: handleOpenSidePanel,
 };
 
 // ---------------------------------------------------------------------------
