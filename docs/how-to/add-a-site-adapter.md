@@ -5,7 +5,7 @@ site (e.g., adding GitHub support)._
 
 A site adapter teaches the extension how to find the thread/post the
 user is replying to on a particular site. The
-[generic adapter](../../packages/extension/src/content/adapters/generic.ts)
+[generic adapter](../../frontend/packages/extension/src/content/adapters/generic.ts)
 is the always-available fallback (page title + draft only); per-site
 adapters do targeted DOM extraction.
 
@@ -16,11 +16,11 @@ the worked example because it has no adapter yet.
 ## What you'll change
 
 1. Add a new adapter class in
-   `packages/extension/src/content/adapters/<site>.ts`.
+   `frontend/packages/extension/src/content/adapters/<site>.ts`.
 2. Register it in
-   [`adapters/index.ts`](../../packages/extension/src/content/adapters/index.ts).
+   [`adapters/index.ts`](../../frontend/packages/extension/src/content/adapters/index.ts).
 3. Add the host to `host_permissions` in
-   [`manifest.config.ts`](../../packages/extension/manifest.config.ts).
+   [`manifest.config.ts`](../../frontend/packages/extension/manifest.config.ts).
 
 ## 1. Write the adapter
 
@@ -36,12 +36,12 @@ export interface SiteAdapter {
 `targetField` is the contenteditable / textarea / input the user is
 focused on. Your job: walk up to the relevant container, pull the thread
 or post, and shape it into a `RequestContext` (see
-[`shared/src/schemas.ts`](../../packages/shared/src/schemas.ts)).
+[`shared/src/schemas.ts`](../../frontend/packages/shared/src/schemas.ts)).
 
 Minimal example — GitHub:
 
 ```ts
-// packages/extension/src/content/adapters/github.ts
+// frontend/packages/extension/src/content/adapters/github.ts
 import type { RequestContext } from "@inkwell/shared";
 import { LIMITS } from "@inkwell/shared";
 import { readText } from "../editable";
@@ -97,7 +97,7 @@ export class GitHubAdapter implements SiteAdapter {
 ## 2. Register
 
 ```ts
-// packages/extension/src/content/adapters/index.ts
+// frontend/packages/extension/src/content/adapters/index.ts
 import { GitHubAdapter } from "./github";
 
 const ADAPTERS = [
@@ -109,7 +109,7 @@ const ADAPTERS = [
 ## 3. Permission
 
 ```ts
-// packages/extension/manifest.config.ts
+// frontend/packages/extension/manifest.config.ts
 host_permissions: [
   // ...existing entries
   "https://github.com/*",
@@ -138,7 +138,7 @@ To inspect what the adapter actually extracts, add a temporary
 Some sites are sensitive even though they don't match our default
 blocklist. If your new site qualifies (HR portals, compliance tools),
 add it to
-[`DEFAULT_BLOCKED_HOSTS`](../../packages/shared/src/messages.ts) so the
+[`DEFAULT_BLOCKED_HOSTS`](../../frontend/packages/shared/src/messages.ts) so the
 trigger doesn't appear by default. Users can still opt in via the
 options page.
 

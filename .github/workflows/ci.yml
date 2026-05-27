@@ -1,20 +1,13 @@
-# CI for the Inkwell monorepo.
+# CI for the Inkwell repo.
 #
-# Runs on:
-#   • Every PR (full check)
-#   • Pushes to main (full check)
+# Two independent jobs run in parallel:
 #
-# What it verifies:
-#   1. pnpm install --frozen-lockfile  → lockfile is honest
-#   2. @inkwell/shared builds            → consuming packages can resolve types
-#   3. typecheck (all packages)          → strict TS passes everywhere
-#   4. lint (all packages)               → ESLint / next lint clean
-#   5. test (Vitest)                     → shared + backend unit tests pass
-#   6. backend prod build                → /api routes + middleware compile
-#   7. extension prod build              → MV3 bundle generates cleanly
+#   • frontend — TypeScript: shared types + extension build / lint / typecheck
+#   • backend  — Python (FastAPI): lint / typecheck / tests
 #
-# Vercel still owns the actual deploy via its GitHub integration; this
-# workflow just gates merges.
+# A merge to main is blocked until both jobs are green. Each job's
+# working-directory is pinned to its own subtree (frontend/ or backend/),
+# so the two toolchains never share a checkout-relative path.
 
 name: ci
 
@@ -31,10 +24,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: verify
+  # ---------------------------------------------------------------------------
+  # Frontend: TypeScript (extension + shared)
+  # ---------------------------------------------------------------------------
+  frontend:
+    name: frontend (extension + shared)
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
 
@@ -48,6 +47,7 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Install
         run: pnpm install --frozen-lockfile
@@ -61,12 +61,8 @@ jobs:
       - name: Lint
         run: pnpm -r lint
 
-      - name: Build backend
-        run: pnpm --filter @inkwell/backend exec next build
-        env:
-          # The backend env validator requires NODE_ENV; OPENAI_API_KEY is
-          # optional and the mock streaming layer covers its absence.
-          NODE_ENV: test
+      - name: Prettier format check
+        run: pnpm format:check
 
       - name: Build extension
         run: pnpm --filter @inkwell/extension build
@@ -75,3 +71,40 @@ jobs:
         run: |
           echo "Sizes:"
           find packages/extension/dist -type f -exec ls -l {} \; | awk '{print $5, $9}' | sort -n
+
+  # ---------------------------------------------------------------------------
+  # Backend: FastAPI (Python)
+  # ---------------------------------------------------------------------------
+  backend:
+    name: backend (fastapi)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install (editable + dev extras)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Ruff lint
+        run: ruff check src tests
+
+      - name: Ruff format check
+        run: ruff format --check src tests
+
+      - name: mypy strict
+        run: mypy src
+
+      - name: pytest
+        run: pytest

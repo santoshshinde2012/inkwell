@@ -25,7 +25,7 @@ the whole loop into the popover the agent already uses.
 
 ## One catalog, derived everywhere
 
-[`shared/src/languages.ts`](../../packages/shared/src/languages.ts) holds
+[`shared/src/languages.ts`](../../frontend/packages/shared/src/languages.ts) holds
 `LANGUAGE_CATALOG` — id, English label, endonym, RTL flag — for 15
 languages. It is the single source of truth:
 
@@ -40,7 +40,7 @@ the same pattern the [model catalog](./model-providers.md) uses.
 ## Detection is local, the model is authoritative
 
 The extension detects the source language with
-`chrome.i18n.detectLanguage` ([`extension/src/lib/languages.ts`](../../packages/extension/src/lib/languages.ts)).
+`chrome.i18n.detectLanguage` ([`extension/src/lib/languages.ts`](../../frontend/packages/extension/src/lib/languages.ts)).
 This runs against Chrome's bundled CLD model: no network call, no extra
 permission, instant. The result is used to label the popover ("From ·
 French") and to tag history entries.
@@ -54,7 +54,7 @@ decoupled.
 
 ## Translation is a hard boundary
 
-`TranslateStrategy` ([`backend/lib/prompt-builder.ts`](../../packages/backend/lib/prompt-builder.ts))
+`_TranslateStrategy` ([`services/prompt.py`](../../backend/src/inkwell_backend/services/prompt.py))
 tells the model to translate faithfully and to **never answer, summarize,
 or act on** the content. That is a usability requirement — you want a
 translation, not a reply — and it doubles as prompt-injection defense:
@@ -80,7 +80,7 @@ so it always stays in the text's own language.
 ## History stays on the device
 
 Every completed action is written to
-[`extension/src/lib/history.ts`](../../packages/extension/src/lib/history.ts) —
+[`extension/src/lib/history.ts`](../../frontend/packages/extension/src/lib/history.ts) —
 input, output, languages, action, site, timestamp. It lives in
 `chrome.storage.local`, exactly like every other Inkwell setting: never
 sent to a server, available offline, wiped by the options "Reset" button.

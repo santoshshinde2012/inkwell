@@ -14,7 +14,7 @@ The structure follows the **[Diátaxis](https://diataxis.fr)** framework.
 | If you want to… | Read |
 | --- | --- |
 | Get the project running locally | [Getting started](./getting-started.md) |
-| Deploy the backend to Vercel | [How-to: Deploy to Vercel](./how-to/deploy-to-vercel.md) |
+| Develop one layer at a time | [How-to: Local development](./how-to/local-development.md) |
 | Understand how the system fits together | [Reference: Architecture](./reference/architecture.md) |
 | See the API contract | [Reference: API](./reference/api.md) |
 | Point the extension at your own backend | [How-to: Use your own backend](./how-to/use-your-own-backend.md) |
@@ -34,11 +34,9 @@ docs/
 ├── privacy.md                    data-handling policy
 ├── contributing.md               PR / issue / code-style guide
 ├── how-to/                       task-oriented recipes
-│   ├── deploy-to-vercel.md
 │   ├── local-development.md
 │   ├── use-your-own-backend.md
-│   ├── add-a-site-adapter.md
-│   └── rotate-secrets.md
+│   └── add-a-site-adapter.md
 ├── reference/                    information-oriented (look-up)
 │   ├── api.md
 │   ├── architecture.md

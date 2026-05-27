@@ -1,0 +1,5 @@
+# This is the TypeScript half of the project. The Python backend lives
+# in ../backend and is managed independently (pip + a local .venv).
+packages:
+  - "packages/extension"
+  - "packages/shared"

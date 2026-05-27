@@ -12,7 +12,7 @@ three sub-modes based on what the user provided:
 | **Light edit** | draft only, no instruction | "Lightly edit for clarity and concision. Preserve voice." |
 | **Compose** | no draft, but instruction and/or page context | "Write the actual text the user described — match the apparent target medium." |
 
-The picker lives in [`pickRewriteMode`](../../packages/backend/lib/prompt-builder.ts).
+The picker lives in [`_RewriteStrategy._pick_mode`](../../backend/src/inkwell_backend/services/prompt.py).
 
 ## Why we collapsed compose into rewrite
 
@@ -52,7 +52,7 @@ stays separate, with its own simpler prompt and its own UX rule.
 
 Grammar requires an existing draft. Without text to fix, the action is
 meaningless — there's no "compose" sub-mode. Validation enforces this
-([schemas.ts](../../packages/shared/src/schemas.ts)).
+([schemas.ts](../../frontend/packages/shared/src/schemas.ts)).
 
 ## Concrete examples
 
@@ -69,5 +69,5 @@ meaningless — there's no "compose" sub-mode. Validation enforces this
   — the validation rules.
 - [Prompt-injection defense](./prompt-injection-defense.md) — why each
   sub-mode has its own restated data-vs-commands rule.
-- [`prompt-builder.ts`](../../packages/backend/lib/prompt-builder.ts) — the
+- [`prompt.py`](../../backend/src/inkwell_backend/services/prompt.py) — the
   source of truth.

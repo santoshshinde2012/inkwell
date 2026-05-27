@@ -1,8 +1,8 @@
 # Prompt-injection defense
 
 _The reasoning behind the layers in
-[`lib/sanitizer.ts`](../../packages/backend/lib/sanitizer.ts) and
-[`lib/prompt-builder.ts`](../../packages/backend/lib/prompt-builder.ts).
+[`services/sanitizer.py`](../../backend/src/inkwell_backend/services/sanitizer.py) and
+[`services/prompt.py`](../../backend/src/inkwell_backend/services/prompt.py).
 For someone deciding whether our defenses are good enough for their use
 case._
 
@@ -60,7 +60,7 @@ Before wrapping, we strip well-known role markers from the input:
 
 These are the patterns attackers use to forge "fake" roles inside text
 that looks like a normal email. See
-[`ROLE_MARKERS`](../../packages/backend/lib/sanitizer.ts).
+[`_ROLE_MARKERS`](../../backend/src/inkwell_backend/services/sanitizer.py).
 
 ### 3. Length caps
 
@@ -140,5 +140,5 @@ If you're tightening these defenses, the rule is:
 - [Three rewrite modes](./three-rewrite-modes.md)
 - [Streaming design](./streaming-design.md)
 - [Security policy](../security.md)
-- [`lib/sanitizer.ts`](../../packages/backend/lib/sanitizer.ts)
-- [`lib/prompt-builder.ts`](../../packages/backend/lib/prompt-builder.ts)
+- [`services/sanitizer.py`](../../backend/src/inkwell_backend/services/sanitizer.py)
+- [`services/prompt.py`](../../backend/src/inkwell_backend/services/prompt.py)

@@ -1,0 +1,30 @@
+# Build/dev caches
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# VCS + local state
+.git/
+.gitignore
+.env
+.env.local
+.env.*.local
+
+# Tests aren't shipped in the image.
+tests/
+
+# Recursive markdown excluded EXCEPT the package's README.md, which the
+# Dockerfile COPYs (hatchling needs it for the wheel's metadata). Putting
+# the un-ignore line last is what makes it take effect.
+**/*.md
+!README.md

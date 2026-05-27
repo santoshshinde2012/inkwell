@@ -6,6 +6,123 @@ uses semantic versioning.
 
 ## [Unreleased]
 
+### Added
+
+- **Backend operational endpoints.** `GET /api/v1/live` (process-alive
+  probe), `GET /api/v1/ready` (readiness gate — 503 until lifespan
+  startup completes), `GET /api/v1/version` (build version + boot
+  timestamp), `GET /api/v1/models` (the model catalog the backend
+  recognises). The new endpoints live in
+  [`api/v1/health.py`](backend/src/inkwell_backend/api/v1/health.py) and
+  [`api/v1/meta.py`](backend/src/inkwell_backend/api/v1/meta.py); the
+  lifespan hook in `main.py` flips the ready flag on startup and drains
+  it on shutdown so rolling deploys see the 503 → 200 transition before
+  traffic lands.
+- **SSE heartbeats on `/api/v1/complete`.** During long generations the
+  backend emits a `: keep-alive\n\n` comment frame every 15 s of model
+  silence so idle reverse proxies (nginx, Cloudflare, load balancers)
+  don't reap the connection mid-stream. Comment lines are part of the
+  SSE spec and are silently dropped by every conforming parser,
+  including the extension's.
+- **`X-Client-Request-Id` end-to-end correlation.** The extension's SSE
+  client sends a UUID per request; the backend reads it via a new
+  FastAPI dependency, propagates it through the completion pipeline,
+  and includes it in the structured audit log line so a single
+  generation can be traced across the popover, the background service
+  worker, the SSE stream, and the audit drain.
+- **`Retry-After` on 429.** Rate-limit responses carry an RFC 9110
+  `Retry-After` header (seconds) and an `error.details.retryAfterMs`
+  field (delta-from-now in ms), so clients know exactly when to retry.
+- **In-page popover selections inside contenteditables.** Medium /
+  Substack / Notion-style editors are large contenteditables; the
+  trigger used to anchor to the *whole editor* (far from the
+  user's selection) because selections inside contenteditables were
+  filtered out as "field-mode territory." Now the trigger anchors to
+  the highlight rect, and the field trigger is restored if the user
+  clears the selection while still focused in the editor.
+- **`makeUuid()` fallback for HTTP pages.** `crypto.randomUUID()` is
+  gated to secure contexts; on plain HTTP host pages the in-page
+  popover's content script would silently throw and the Generate
+  button appeared dead. The new helper falls back to
+  `crypto.getRandomValues()` (RFC 4122 v4 layout) and finally
+  `Math.random()`, so streamId generation works regardless of context.
+- **`runStart()` error surfacing in the popover.** Wraps `start()` in a
+  catch that flips `state.error` and re-renders, so a future unexpected
+  rejection never appears as a dead button again.
+
+### Changed
+
+- **Side Panel UI/UX — slim per-view TopBars + History filter chips +
+  hover-Copy.** The mobile-app drawer model is now joined by a slim
+  single-line TopBar on every view (Assistant / History / Settings):
+  hamburger · brand mark · view title · live status indicator (green
+  dot when backend is online, red on offline, amber while probing). The
+  History view gained per-action **filter chips** (All / Reply /
+  Translate / Grammar / Rewrite with live counts, color-coded), a
+  **sticky search field**, **sticky day headers**, and an **inline
+  Copy button on every row** so the most common action (copy the
+  output) no longer requires expanding the row first. The Settings
+  view was reorganised into a directory ([`sidepanel/settings/`](frontend/packages/extension/src/sidepanel/settings/))
+  with one file per section, a single muted accent palette across all
+  cards (no more rainbow), and a single save-confirmation Toast (the
+  old "Up to date ✓ + Saved pill + Toast" triple-confirmation was
+  redundant).
+- **Backend security and reliability hardening.**
+  - **Origin required on writes.** GET requests may omit `Origin`
+    (server-to-server diagnostics) but every POST is now rejected with
+    `ORIGIN_NOT_ALLOWED` if the header is missing. Closes the "any
+    non-browser script can replay `/complete` anonymously and spend
+    tokens" hole.
+  - **`Access-Control-Allow-Credentials` removed.** Inkwell has no
+    auth and no cookies; reflecting `Origin` with credentials is the
+    canonical XSRF pattern and is unnecessary here.
+  - **Origin comparison case-normalised** (lower-case + strip trailing
+    slash) so `APP_URL=http://Localhost:8000/` no longer mismatches
+    the browser's `http://localhost:8000`.
+  - **Shared `AsyncOpenAI` client with explicit timeouts.** Was
+    constructing a fresh client (and TLS handshake) per request with
+    the SDK's 600 s default; a hung upstream would tie up a worker for
+    ten minutes. New `providers/openai_client.py` exposes a process-
+    wide singleton with `httpx.Timeout(connect=5, read=60, write=10,
+    pool=5)`, closed on graceful shutdown.
+  - **Body-size header pre-check on `/complete`.** Mirrors `/ocr`;
+    rejects a 50 MB body with 413 before reading it into memory.
+  - **Pipelines wrapped in `try/except`** so an unexpected pre-flight
+    error returns a clean `ApiError` with CORS headers attached
+    instead of a bare 500.
+  - **Rate limiter switched to `deque`-backed sliding window** (O(stale)
+    per call instead of two O(window) list comprehensions; semantics
+    unchanged).
+  - **`assert_never` on the `ErrorCode → HTTP status` mapping** —
+    adding a new `ErrorCode` without a status now fails at type-check
+    time, not at runtime via the silent `500` fallback.
+  - **Default host flipped to `127.0.0.1`** in `python -m
+    inkwell_backend`; container deployments still bind `0.0.0.0` via
+    the Dockerfile `CMD`.
+- **`.dockerignore` fix.** The previous `*.md` line excluded
+  `README.md`, which the Dockerfile `COPY pyproject.toml README.md ./`
+  needs for the wheel's metadata — the build was broken in a way that
+  only surfaced on fresh checkouts. Switched to `**/*.md` + an
+  explicit `!README.md` allow-list line.
+
+### Removed
+
+- **`docs/medium-article.md`.** 698-line aspirational essay describing
+  tooling (Portkey/Datadog/LangGraph/Guardrails) that Inkwell doesn't
+  actually have. Overlapped thematically with the canonical
+  [`docs/production-blueprint.md`](docs/production-blueprint.md), was
+  not linked from the docs index, and confused readers walking the
+  docs tree.
+
+---
+
+## [Drawer-pattern iteration — pre-Unreleased]
+
+The mobile-app drawer pattern below was the *previous* Side Panel
+shape; superseded by the slim per-view TopBars described above. Kept
+here so a future archaeologist can reconstruct the intermediate state
+from the CHANGELOG instead of trawling commits.
+
 ### Changed
 
 - **Side Panel UI/UX refactor — mobile-app pattern.** The persistent

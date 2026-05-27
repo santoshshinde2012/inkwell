@@ -1,0 +1,19 @@
+# Patterns are relative to this file (frontend/.prettierignore). The
+# Python backend in ../backend/ is formatted by Ruff, not Prettier, so
+# nothing under that path is referenced here.
+
+node_modules
+.turbo
+
+# Generated artifacts
+packages/extension/dist
+packages/shared/dist
+**/*.tsbuildinfo
+
+# Lockfiles
+pnpm-lock.yaml
+
+# Env files
+.env
+.env.local
+.env.*.local

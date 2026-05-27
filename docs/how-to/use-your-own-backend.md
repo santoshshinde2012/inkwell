@@ -45,13 +45,19 @@ To go back, click **Reset to default** then **Save & test**.
 
 ## 2. The API contract
 
-A compatible backend implements **two endpoints** under `/api/v1`. The
-design follows common, boring conventions on purpose — versioned paths,
-standard status codes, JSON bodies, SSE for streaming — so it's
+A compatible backend implements **three required endpoints** under
+`/api/v1`: `health`, `complete`, `ocr`. The bundled backend also
+exposes a handful of read-only operational endpoints (`live`, `ready`,
+`version`, `models`); these are not required for a custom backend,
+but if you ship them they should match the shapes documented in
+[reference/api.md](../reference/api.md).
+
+The design follows common, boring conventions on purpose — versioned
+paths, standard status codes, JSON bodies, SSE for streaming — so it's
 straightforward to implement in any language or framework.
 
 The canonical request/response *types* live in
-[`packages/shared/src/schemas.ts`](../../packages/shared/src/schemas.ts)
+[`frontend/packages/shared/src/schemas.ts`](../../frontend/packages/shared/src/schemas.ts)
 (zod schemas). This section is the prose contract.
 
 ### CORS
@@ -151,6 +157,21 @@ data: {"ok":true}
 
 A stream ends with **either** `done` **or** `error`.
 
+**Heartbeat (optional but recommended).** During long generations the
+bundled backend emits an SSE *comment* frame every 15 s the model is
+silent:
+
+```
+: keep-alive
+
+```
+
+Comment lines (any frame starting with `:`) are part of the SSE spec
+and silently ignored by every conforming parser, including the
+extension's. Custom backends behind a reverse proxy with an idle-
+connection timeout should emit something equivalent so the stream
+isn't reaped mid-generation.
+
 ### Errors (non-stream)
 
 For failures *before* streaming starts (bad input, rate limit, auth),
@@ -165,19 +186,27 @@ respond with a JSON error envelope and an appropriate status code:
 | `400` | malformed / invalid body |
 | `401` / `403` | auth or origin rejected |
 | `413` | body too large |
-| `429` | rate limited |
+| `429` | rate limited — include a `Retry-After` header (seconds, RFC 9110) and `error.details.retryAfterMs` |
+| `499` | client closed the connection mid-stream (`STREAM_ABORTED`; nginx convention) |
+| `500` | internal error (caller's last resort) |
 | `502` / `503` / `504` | upstream model error / unavailable / timeout |
 
 `code` values are listed in [reference/error-codes.md](../reference/error-codes.md).
 The extension shows `message` to the user and retries when
-`retryable` is true.
+`retryable` is true. For `RATE_LIMITED`, `retryable` is `false` — the
+client must wait the indicated `Retry-After` interval rather than
+re-issuing immediately.
 
 ### Minimal reference implementation
 
-The bundled backend ([`packages/backend`](../../packages/backend)) is a
-complete, ~10-file Next.js implementation of this contract — read it as
-the reference. The streaming logic is in
-[`lib/completion-pipeline.ts`](../../packages/backend/lib/completion-pipeline.ts).
+The bundled backend ([`backend/`](../../backend)) is a
+complete FastAPI implementation of this contract — read it as the
+reference. The streaming logic is in
+[`services/completion.py`](../../backend/src/inkwell_backend/services/completion.py),
+the OCR pipeline in
+[`services/ocr.py`](../../backend/src/inkwell_backend/services/ocr.py),
+and the request/response DTOs in
+[`domain/schemas.py`](../../backend/src/inkwell_backend/domain/schemas.py).
 
 ## See also
 

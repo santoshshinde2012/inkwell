@@ -12,24 +12,25 @@ OpenAI models only, but the seams are in place.
 ## The two halves
 
 ```
-            shared/src/models.ts                backend/lib/providers/
-          ┌──────────────────────┐            ┌──────────────────────┐
-          │ MODEL_CATALOG        │            │ CompletionProvider   │  (interface)
-          │  • id                │            │  • openai.ts         │  (impl)
-          │  • label             │            │  • index.ts registry │
-          │  • provider ─────────┼──────┐     └──────────┬───────────┘
-          │  • description       │      │                │
-          │  • tier              │      │  providerForModel(id)
-          └──────────┬───────────┘      │     resolves a provider
-                     │                  └────────────────┘
-        extension picker + request      backend dispatch
+            shared/src/models.ts            backend/.../providers/
+          ┌──────────────────────┐         ┌──────────────────────────┐
+          │ MODEL_CATALOG        │         │ CompletionProvider       │  (Protocol)
+          │  • id                │         │  • openai_provider.py    │  (impl)
+          │  • label             │         │  • registry.py           │  (dispatch)
+          │  • provider ─────────┼───┐     └──────────┬───────────────┘
+          │  • description       │   │                │
+          │  • tier              │   │  provider_for_model(id)
+          └──────────┬───────────┘   │     resolves a provider
+                     │               └────────────────┘
+        extension picker + request   backend dispatch
         validation (z.enum(MODEL_IDS))
 ```
 
 ### 1. The catalog (`@inkwell/shared`)
 
-[`models.ts`](../../packages/shared/src/models.ts) is the single source of
-truth. Every model is one `ModelInfo` entry in `MODEL_CATALOG`:
+[`models.ts`](../../frontend/packages/shared/src/models.ts) is the single source
+of truth for the extension. Every model is one `ModelInfo` entry in
+`MODEL_CATALOG`:
 
 ```ts
 {
@@ -49,32 +50,34 @@ Derived from it:
 - `DEFAULT_MODEL_ID` — the first catalog entry.
 - `getModelInfo(id)` / `isModelId(id)` / `providerForModel(id)`.
 
-Because the catalog is shared, the extension renders its model picker
-directly from it and the backend validates the request `model` against
-the same list.
+The Python backend keeps a mirror of the catalog in
+[`domain/models.py`](../../backend/src/inkwell_backend/domain/models.py)
+with identical shape. Keep both copies aligned when you add a model.
 
 ### 2. The provider registry (backend)
 
-A [`CompletionProvider`](../../packages/backend/lib/providers/types.ts)
+A [`CompletionProvider`](../../backend/src/inkwell_backend/providers/base.py)
 is one upstream:
 
-```ts
-interface CompletionProvider {
-  readonly id: ModelProvider;
-  readonly configured: boolean;          // real credentials present?
-  streamCompletion(args): AsyncGenerator<CompletionChunk>;
-}
+```python
+class CompletionProvider(Protocol):
+    id: ModelProvider
+
+    @property
+    def configured(self) -> bool: ...   # real credentials present?
+
+    def stream_completion(self, args: ProviderCompletionArgs) -> AsyncIterator[CompletionChunk]: ...
 ```
 
-[`providers/index.ts`](../../packages/backend/lib/providers/index.ts) holds
-a `Record<ModelProvider, CompletionProvider>` registry. The completion
-pipeline calls `getProviderForModel(modelId)` and streams from whatever it
-gets back — it never names a concrete provider.
+[`providers/registry.py`](../../backend/src/inkwell_backend/providers/registry.py)
+holds a `dict[ModelProvider, CompletionProvider]`. The completion
+pipeline calls `get_provider_for_model(model_id)` and streams from
+whatever it gets back — it never names a concrete provider.
 
-The registry is typed `Record<ModelProvider, …>`, so widening the
-`ModelProvider` union (step 2 below) produces a **compile error** until
-you register the matching provider. You can't ship a model whose provider
-doesn't exist.
+The registry is typed `dict[ModelProvider, CompletionProvider]`, so
+widening the `ModelProvider` enum (step 1 below) produces a **type
+error** until you register the matching provider. You can't ship a
+model whose provider doesn't exist.
 
 ## How a request flows
 
@@ -82,14 +85,16 @@ doesn't exist.
    `<select>` (defaulting to their saved `defaultModel`).
 2. The chosen `model` rides in the `COMPLETE_START` message → the
    background attaches it to the `POST /api/v1/complete` body.
-3. The backend validates `model` with `z.enum(MODEL_IDS)` — unknown ids
+3. The backend validates `model` against the catalog — unknown ids
    are rejected as `VALIDATION_FAILED`.
-4. `completion-pipeline.ts` resolves `getProviderForModel(model)` and
+4. `services/completion.py` resolves `get_provider_for_model(model)` and
    streams from it.
 
 ## Recipe: add another OpenAI model
 
-Pure data change — one entry in `MODEL_CATALOG`:
+Pure data change — one entry in `MODEL_CATALOG` on each side.
+
+In `frontend/packages/shared/src/models.ts`:
 
 ```ts
 {
@@ -101,35 +106,57 @@ Pure data change — one entry in `MODEL_CATALOG`:
 }
 ```
 
+In `backend/src/inkwell_backend/domain/models.py`:
+
+```python
+ModelInfo(
+    id="gpt-4o",
+    label="GPT-4o",
+    provider=ModelProvider.OPENAI,
+    description="Higher quality, a little slower.",
+    tier="quality",
+),
+```
+
 The picker, the request schema, and validation all update automatically.
 
 ## Recipe: add a new provider (e.g. Anthropic)
 
-1. **Widen the union** in `shared/src/models.ts`:
-   ```ts
-   export type ModelProvider = "openai" | "anthropic";
-   ```
-   The backend registry now fails to compile — good, it's reminding you.
+1. **Widen the `ModelProvider` enum** on both sides:
+   - `frontend/packages/shared/src/models.ts`:
+     ```ts
+     export type ModelProvider = "openai" | "anthropic";
+     ```
+   - `backend/src/inkwell_backend/domain/models.py`:
+     ```python
+     class ModelProvider(StrEnum):
+         OPENAI = "openai"
+         ANTHROPIC = "anthropic"
+     ```
+   The backend registry now fails to type-check — good, it's reminding
+   you.
 
-2. **Add the models** to `MODEL_CATALOG` with `provider: "anthropic"`.
+2. **Add the models** to `MODEL_CATALOG` on both sides with the new
+   provider.
 
 3. **Implement the provider** —
-   `backend/lib/providers/anthropic.ts` — a class implementing
-   `CompletionProvider` (mirror `openai.ts`: a real stream + a
-   non-configured fallback).
+   `backend/src/inkwell_backend/providers/anthropic_provider.py`
+   exposing a module-level `anthropic_provider: CompletionProvider`
+   (mirror `openai_provider.py`: a real async stream + a non-configured
+   fallback delegating to `mock_provider.mock_stream`).
 
-4. **Register it** in `providers/index.ts`:
-   ```ts
-   const PROVIDERS: Record<ModelProvider, CompletionProvider> = {
-     openai: openAiProvider,
-     anthropic: anthropicProvider,
-   };
+4. **Register it** in `providers/registry.py`:
+   ```python
+   _PROVIDERS: dict[ModelProvider, CompletionProvider] = {
+       ModelProvider.OPENAI: openai_provider,
+       ModelProvider.ANTHROPIC: anthropic_provider,
+   }
    ```
-   Compile error resolved.
+   Type error resolved.
 
-5. Add any new credential to `lib/env.ts` and `.env.example`.
+5. Add any new credential to `settings.py` and `.env.example`.
 
-Nothing else changes — not the route handler, not `completion-pipeline.ts`,
+Nothing else changes — not the route handler, not `services/completion.py`,
 not the schema, not the extension UI.
 
 ## See also

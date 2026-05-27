@@ -1,13 +1,20 @@
 # Dependencies
 node_modules/
 .pnpm-store/
+# Python venvs (backend/.venv, anywhere else)
+.venv/
+__pycache__/
+*.py[cod]
 
 # Build outputs
 dist/
 build/
-.next/
 out/
 *.tsbuildinfo
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
 
 # Env / secrets — never commit
 .env
@@ -35,9 +42,6 @@ Thumbs.db
 coverage/
 .nyc_output/
 *.lcov
-
-# Vercel
-.vercel
 
 # Misc
 .turbo

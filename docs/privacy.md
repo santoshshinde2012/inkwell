@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 2026-05-16_
+_Last updated: 2026-05-27_
 
 This document explains what Inkwell does and does not collect. If you
 spot a contradiction with the actual behavior, please report it as a
@@ -56,8 +56,8 @@ For each request the backend logs a single JSON line containing:
 - The client IP-derived rate-limit key.
 
 **No prompt content, no completion content, no account identifiers** —
-there are no accounts. Logs are retained per your hosting provider's
-defaults (Vercel).
+there are no accounts. Logs are retained per the hosting provider's
+defaults wherever the FastAPI service is deployed.
 
 ### What we never collect
 
@@ -70,8 +70,8 @@ defaults (Vercel).
 
 | Vendor | Purpose | Data |
 | --- | --- | --- |
-| **OpenAI** | LLM completion | Prompt + page context (in-flight only) |
-| **Vercel** | Backend hosting | API traffic + metadata logs |
+| **OpenAI** | LLM completion + vision OCR | Prompt + page context + images (in-flight only) |
+| **Hosting provider** | Where the FastAPI service is deployed | API traffic + metadata logs |
 
 OpenAI API traffic is configured with training opt-out. OpenAI's own
 30-day abuse-monitoring retention is outside our control — don't put

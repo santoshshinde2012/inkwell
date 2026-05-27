@@ -6,6 +6,26 @@ languages — without ever leaving the page you're on.
 
 ---
 
+## Repository layout
+
+The project is split top-level by language so each subtree owns its own
+toolchain:
+
+```
+extension-reply/
+├── backend/         Python (FastAPI) service — /api/v1/{health,live,ready,version,models,complete,ocr}
+├── frontend/        TypeScript pnpm workspace
+│   └── packages/
+│       ├── extension/   Chrome MV3 extension (the Inkwell UI)
+│       └── shared/      shared schemas + types
+├── docs/            Diátaxis-structured project documentation
+├── Makefile         repo-root orchestration (install / dev / test / lint)
+└── .github/         CI for both backends
+```
+
+The two halves are independent: changes to `backend/` don't touch the
+Node toolchain and vice versa. CI runs them in parallel jobs.
+
 ## What you can do with Inkwell
 
 ### 1. Reply to customer messages in their language
@@ -48,7 +68,26 @@ GitHub comments, Notion docs, plain `<textarea>`s — anywhere you can
 type, Inkwell works. Built-in adapters pull thread context on the major
 platforms; a generic adapter handles everything else.
 
-### 7. Keep a searchable history of what you wrote
+### 7. Extract text from screenshots and images
+Pull text out of any image, then keep working on it with the other
+tools. Four ways in:
+
+- paste a screenshot into the side panel's input,
+- click the image button in the input bar to pick an image file,
+- drag-drop an image onto the panel,
+- or right-click any image on a page and choose **Extract text with
+  Inkwell** — the result opens directly in the in-page popover (no
+  side-panel detour), pre-filled and ready for Reply / Translate /
+  Grammar / Rewrite.
+
+Recognition runs through `/api/v1/ocr`, which forwards the image to a
+vision model (gpt-4o-mini by default). Fast, multilingual, handles
+messy screenshots well. The image leaves your browser to reach your
+backend; the backend doesn't store it. The extracted text lands
+wherever you started — input bar or popover — ready to reply to,
+translate, fix, or rewrite.
+
+### 8. Keep a searchable history of what you wrote
 Every draft, translation, and rewrite is saved locally in your browser
 (`chrome.storage.local`) — never sent to a server, never tied to an
 account. Open the **History** tab in the options page to find that
@@ -73,13 +112,24 @@ reply you sent last week.
 ## Get started
 
 ```bash
-pnpm install
-pnpm --filter @inkwell/shared build
-pnpm dev
+make install     # installs both halves (pnpm + .venv)
+make dev         # runs backend + extension watcher together
 ```
 
-Load `packages/extension/dist/` in `chrome://extensions` (Developer
-mode → Load unpacked). Full walk-through:
+Or run each half explicitly:
+
+```bash
+# Python backend (FastAPI on :8000)
+make -C backend install
+make -C backend dev
+
+# TypeScript frontend (extension watcher → frontend/packages/extension/dist/)
+cd frontend && pnpm install
+cd frontend && pnpm dev
+```
+
+Load `frontend/packages/extension/dist/` in `chrome://extensions`
+(Developer mode → Load unpacked). Full walk-through:
 [docs/getting-started.md](./docs/getting-started.md).
 
 ## License

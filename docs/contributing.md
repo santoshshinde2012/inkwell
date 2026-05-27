@@ -20,31 +20,58 @@ See [Getting started](./getting-started.md). It takes about 10 minutes.
 
 ## Code style
 
+The repo has two language toolchains, each with its own conventions:
+
+**Frontend (TypeScript) — `frontend/`**
+
 - **TypeScript strict** is on across all packages. Don't add `any`,
   don't disable strict checks. If you genuinely need `any`, leave a
   one-line comment explaining why.
 - **Schemas** for any data crossing a boundary (HTTP, `chrome.runtime`,
-  storage). Schemas live in `packages/shared/src/schemas.ts` and
-  `messages.ts`.
-- **No silent fallbacks.** When something fails (DB unreachable, OpenAI
-  timeout), surface it via the error envelope or a startup warning —
-  don't pretend it didn't happen.
+  storage). Schemas live in `frontend/packages/shared/src/schemas.ts`
+  and `messages.ts`.
+- **Prettier + ESLint** are the formatter/lint authority. Run
+  `pnpm lint` from `frontend/`.
+- **Commit `frontend/pnpm-lock.yaml` changes.**
+
+**Backend (Python) — `backend/`**
+
+- **`mypy --strict`** must pass. Type every function, even tests.
+- **Ruff** is the formatter and linter. Run `make -C backend format`
+  before committing.
+- **Pydantic v2** for every boundary type. `extra="forbid"` so unknown
+  fields are rejected at the edge.
+
+**Both sides**
+
+- **No silent fallbacks.** When something fails (rate-limit tripped,
+  OpenAI timeout), surface it via the error envelope or a startup
+  warning — don't pretend it didn't happen.
 - **Default to no comments.** Prefer well-named identifiers. Add a
   comment only when the *why* is non-obvious (a security trade-off, a
   workaround for a specific bug, an invariant the type system can't
   express).
-- **Commit lockfile changes.** `pnpm-lock.yaml` is committed.
 
 ## Quality gates
 
-Before opening a PR, all three of these must pass — CI
-([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) runs the
-same set:
+Before opening a PR, the same set CI
+([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) runs must
+pass. From the repo root:
 
-- `pnpm typecheck` — strict TypeScript, every package.
-- `pnpm lint` — ESLint (`eslint` for shared/extension, `next lint` for
-  the backend).
-- `pnpm build` — every package builds.
+```bash
+make check    # ruff + eslint + mypy + tsc + pytest + extension build
+```
+
+Or piecemeal:
+
+- **Frontend**, in `frontend/`:
+  - `pnpm typecheck` — strict TypeScript, every package
+  - `pnpm lint` — ESLint
+  - `pnpm build` — shared + extension build
+- **Backend**, in `backend/`:
+  - `make lint` — Ruff check
+  - `make typecheck` — `mypy --strict src`
+  - `make test` — pytest
 
 The UI layers (popover, side panel, options page) are verified by hand;
 the `curl` recipes in [How-to: Local development](./how-to/local-development.md)

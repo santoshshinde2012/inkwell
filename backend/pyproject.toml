@@ -1,0 +1,126 @@
+[project]
+name = "inkwell-backend"
+version = "1.1.0"
+description = "Python (FastAPI) backend for the Inkwell extension — feature-parity port of the Next.js backend in packages/backend."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "UNLICENSED" }
+authors = [{ name = "Inkwell" }]
+
+# Production dependencies. Pinned to compatible major versions — bump
+# them deliberately, not implicitly, so security/breaking changes get
+# review. Each line below has a one-sentence reason.
+dependencies = [
+    # Web framework — async, OpenAPI-first, native streaming.
+    "fastapi>=0.115,<1.0",
+    # ASGI server with httptools + uvloop for production-grade IO.
+    "uvicorn[standard]>=0.32,<1.0",
+    # Settings + DTO validation; the spiritual successor to zod.
+    "pydantic>=2.9,<3.0",
+    "pydantic-settings>=2.6,<3.0",
+    # Official OpenAI SDK — async client + streaming chat completions.
+    "openai>=1.54,<2.0",
+    # JSON-formatted stdlib logger; structured logs without a new framework.
+    "python-json-logger>=2.0,<3.0",
+]
+
+[project.optional-dependencies]
+# Dev tools live behind an extra so `pip install .` for production
+# images doesn't pull lint/test deps.
+dev = [
+    "ruff>=0.7.0",
+    "mypy>=1.13",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+    "anyio>=4.6",
+]
+
+[project.scripts]
+# `inkwell-backend` becomes a console entry point once the package is
+# installed (`pip install -e .`). Equivalent to `python -m inkwell_backend`.
+inkwell-backend = "inkwell_backend.__main__:main"
+
+# ---------------------------------------------------------------------------
+# Build system
+# ---------------------------------------------------------------------------
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/inkwell_backend"]
+
+# ---------------------------------------------------------------------------
+# Ruff — lint + format (replaces black + isort + flake8 + pylint)
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# Sensible default rule set: pyflakes, pycodestyle, isort, bugbear,
+# comprehensions, pyupgrade, simplify, security warnings. Pulls in most
+# real bug-class checks without being noisy.
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes (undefined names, unused imports)
+    "I",    # isort (import sort + grouping)
+    "B",    # flake8-bugbear (likely bugs)
+    "C4",   # flake8-comprehensions
+    "UP",   # pyupgrade (modernisation suggestions)
+    "SIM",  # flake8-simplify
+    "S",    # flake8-bandit (security)
+    "RUF",  # ruff-native rules
+    "PT",   # pytest-style
+    "ASYNC",# async lint
+]
+ignore = [
+    "E501",   # line length already enforced by formatter
+    "S101",   # assert use is fine in tests
+    "B008",   # FastAPI's Depends() in defaults is the documented pattern
+    "RUF003", # the typographic × / dashes in comments are intentional
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101", "S105", "S106"]  # asserts + mock secrets in tests
+
+[tool.ruff.format]
+# Single source of formatting truth.
+quote-style = "double"
+indent-style = "space"
+
+# ---------------------------------------------------------------------------
+# mypy — strict static typing
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+disallow_any_generics = true
+no_implicit_reexport = true
+check_untyped_defs = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+# Third-party libs without ship-quality stubs — keep mypy strict on our
+# code while not gating on theirs.
+module = ["pythonjsonlogger.*"]
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra --strict-markers --strict-config"
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = [
+    "error",                               # any warning surfaced in tests is a test failure
+    "ignore::DeprecationWarning:openai.*", # SDK's internal deprecation noise
+]

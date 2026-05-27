@@ -3,31 +3,55 @@
 _Once you've finished [Getting started](../getting-started.md), this is
 how to use a real OpenAI key and work on one layer at a time._
 
+## Backend layout at a glance
+
+The backend is a Python (FastAPI) service in `backend/`. It
+exposes:
+
+- `GET  /api/v1/health` — JSON health check
+- `POST /api/v1/complete` — SSE-streamed chat completion
+- `POST /api/v1/ocr` — image-to-text via a vision model
+
+There is no database and no authentication. The only external
+dependency is OpenAI.
+
 ## Using a real OpenAI key
 
-By default the backend serves a mock streaming response. To use the real
-model locally, put your key in `packages/backend/.env.local`:
+By default the backend serves a deterministic mock streaming response,
+so local dev works with zero secrets. To use the real model, put your
+key in `backend/.env`:
 
 ```
 OPENAI_API_KEY=sk-...
 OPENAI_DEFAULT_MODEL=gpt-4o-mini
 ```
 
-Restart `pnpm dev`. The banner should read `[inkwell] features: openai=true`.
+Restart the dev server. The startup log line should include
+`has_openai=True`.
 
-That's the only external service — there is no database or auth to set
-up. See [reference/environment.md](../reference/environment.md).
-
-## Working on one package
+## Running one layer at a time
 
 ```bash
-pnpm --filter @inkwell/backend dev          # backend only
-pnpm --filter @inkwell/extension dev        # extension only (writes dist/)
-pnpm --filter @inkwell/shared build --watch # rebuild shared types on save
+# Extension only (rebuilds dist/ on save):
+make frontend
+
+# Backend only (uvicorn --reload on :8000):
+make backend                # uvicorn --reload on :8000 (delegates to backend/Makefile)
+
+# Or directly inside the backend dir:
+cd backend
+make install               # one-off: creates .venv with dev extras
+make dev                   # uvicorn --reload on :8000
 ```
 
-> When you change `packages/shared/`, rebuild it before the consuming
-> packages see the change. `--watch` does this automatically.
+When you change `frontend/packages/shared/`, rebuild it before the extension
+sees the change:
+
+```bash
+pnpm --filter @inkwell/shared build
+# or, in another terminal:
+pnpm --filter @inkwell/shared build --watch
+```
 
 ## Useful curl recipes
 
@@ -35,35 +59,44 @@ No auth header is needed — the API is anonymous.
 
 ```bash
 # Health
-curl http://localhost:3000/api/v1/health
+curl http://localhost:8000/api/v1/health
 
 # Streaming completion
-curl -N http://localhost:3000/api/v1/complete \
-  -H "Origin: http://localhost:3000" \
+curl -N http://localhost:8000/api/v1/complete \
+  -H "Origin: http://localhost:8000" \
   -H "Content-Type: application/json" \
   -d '{"action":"reply","context":{"post":{"author":"Bob","text":"hi"}}}'
 
 # Translate a customer query into English
-curl -N http://localhost:3000/api/v1/complete \
-  -H "Origin: http://localhost:3000" \
+curl -N http://localhost:8000/api/v1/complete \
+  -H "Origin: http://localhost:8000" \
   -H "Content-Type: application/json" \
   -d '{"action":"translate","context":{"post":{"text":"Bonjour, ma commande est en retard."}},
        "sourceLanguage":"fr","targetLanguage":"en"}'
 
 # Reply to a French customer, in French (targetLanguage omitted = match source)
-curl -N http://localhost:3000/api/v1/complete \
-  -H "Origin: http://localhost:3000" \
+curl -N http://localhost:8000/api/v1/complete \
+  -H "Origin: http://localhost:8000" \
   -H "Content-Type: application/json" \
   -d '{"action":"reply","context":{"post":{"text":"Ma commande est en retard."}},
        "sourceLanguage":"fr"}'
 
+# OCR a base64-encoded image
+curl http://localhost:8000/api/v1/ocr \
+  -H "Origin: http://localhost:8000" \
+  -H "Content-Type: application/json" \
+  -d '{"imageBase64":"<base64>","mimeType":"image/png"}'
+
 # With personalization (what the extension attaches from local storage)
-curl -N http://localhost:3000/api/v1/complete \
-  -H "Origin: http://localhost:3000" \
+curl -N http://localhost:8000/api/v1/complete \
+  -H "Origin: http://localhost:8000" \
   -H "Content-Type: application/json" \
   -d '{"action":"reply","context":{"post":{"text":"hi"}},
        "profile":{"displayName":"Alex","aboutMe":"PM, prefers concise"}}'
 ```
+
+While iterating on the backend you can also browse the auto-generated
+OpenAPI docs at <http://localhost:8000/docs>.
 
 ## Iterating on the extension
 
@@ -80,6 +113,19 @@ doesn't auto-reload extensions — click the reload icon on
 - **Options page:** open it, then DevTools as for any normal tab.
 - **Stored settings:** the service-worker DevTools console —
   `chrome.storage.local.get(console.log)`.
+
+## Backend dev commands cheatsheet
+
+```bash
+cd backend
+make dev          # uvicorn --reload on :8000
+make lint         # ruff check
+make format       # ruff format + autofix
+make typecheck    # mypy strict
+make test         # pytest
+make check        # all three
+make docker       # build the production image
+```
 
 ## See also
 

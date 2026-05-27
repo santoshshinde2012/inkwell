@@ -1,6 +1,6 @@
 # Streaming design
 
-_Why `/api/v1/complete` is the way it is — runtime choice, SSE event
+_Why `/api/v1/complete` is the way it is — server choice, SSE event
 shape, and how the extension consumes it._
 
 ## Why streaming
@@ -45,75 +45,88 @@ event: error
 data: {"code":"UPSTREAM_ERROR","message":"Upstream model error","retryable":true}
 ```
 
-The shapes are zod-validated on both ends. See
-[shared/src/schemas.ts § SSE payloads](../../packages/shared/src/schemas.ts).
+The encoder names these events with a `Literal` type so an SSE event
+with a typo (e.g. `event: tokeen`) fails at type-check time, not at
+runtime; the extension's parser refuses unknown event names too.
 
-## Runtime choice (Node, not Edge)
+### Heartbeats
 
-The backend runs `/api/v1/complete` on the **Node** runtime.
+During long generations the backend emits an SSE *comment* every 15 s
+of model silence so idle nginx / Cloudflare / load-balancer proxies
+don't reap the connection mid-stream:
 
-### Why Edge would be tempting
+```
+: keep-alive
 
-- Lower TTFB (~50ms vs ~300ms cold start)
-- Native streaming
-- Runs near the user's region
+```
 
-### Why we chose Node
+Comment lines starting with `:` are part of the SSE spec — every
+conforming parser (including the extension's) silently ignores them.
+You'll never see them as a tokenised event. Custom clients should
+drop any line whose first character is `:`.
+
+The shapes are Pydantic-validated server-side and zod-validated on the
+extension. See
+[`backend/src/inkwell_backend/domain/schemas.py`](../../backend/src/inkwell_backend/domain/schemas.py)
+and [`frontend/packages/shared/src/schemas.ts`](../../frontend/packages/shared/src/schemas.ts).
+
+### Request correlation
+
+The extension sends `X-Client-Request-Id: <uuid>` on every `/complete`
+call. The backend reads it via the `client_request_id` FastAPI
+dependency, propagates it through the completion pipeline, and
+includes it in the structured `audit.log_completion` line. One UUID
+ties together: the popover's local state, the SSE messages routed
+through the background service worker, and the server-side log entry
+for that generation. Custom backends should accept and log it.
+
+## Server: FastAPI + StreamingResponse
+
+The completion route returns FastAPI's `StreamingResponse` wrapping an
+`AsyncIterator[bytes]` from
+[`services.completion`](../../backend/src/inkwell_backend/services/completion.py).
+Each yield is a pre-encoded SSE event (the encoder lives in
+[`domain.sse`](../../backend/src/inkwell_backend/domain/sse.py));
+the route handler never touches business logic.
 
 Rate limiting is done with an **in-memory per-IP sliding window** (see
-[`lib/rate-limit.ts`](../../packages/backend/lib/rate-limit.ts)). For that
-counter to mean anything it has to survive between requests — and Node
-functions on Vercel stay warm for several minutes, whereas Edge isolates
-are recreated aggressively and would reset the map almost every request.
-
-Trade-off:
-
-- **Pro of Node:** the in-memory rate limiter actually blunts bursts.
-- **Con of Node:** ~200ms additional cold-start latency.
-
-Node functions on Vercel stream `ReadableStream` responses natively, so
-the user-facing streaming UX is identical to the Edge variant.
-
-### If you need Edge-level TTFB
-
-Move rate limiting to a shared store (Vercel KV / Upstash / Cloudflare
-KV) keyed by IP, then `/complete` becomes stateless and can run on Edge.
-We haven't done this because the in-memory limiter is adequate for the
-current scale and adds no external dependency.
+[`services/rate_limit.py`](../../backend/src/inkwell_backend/services/rate_limit.py)).
+For that counter to mean anything it has to survive between requests —
+which is fine for a long-running uvicorn process. If you scale to
+multiple replicas or want a hard quota, swap the in-process store for
+Redis without changing any caller.
 
 ## Backpressure and cancellation
 
-The Node handler wires a `ReadableStream` to OpenAI's stream:
+The pipeline polls `request.is_disconnected()` between every chunk
+emitted by the provider stream. Starlette flips that flag the moment
+the underlying ASGI server sees a TCP RST / half-close, so client
+hang-ups free OpenAI's stream immediately rather than after the next
+network event:
 
-```ts
-const abort = new AbortController();
-request.signal.addEventListener("abort", () => abort.abort());
-
-const stream = new ReadableStream({
-  async start(controller) {
-    for await (const chunk of streamCompletion({ ..., signal: abort.signal })) {
-      if (chunk.delta) sseToken(controller, { delta: chunk.delta });
-      // ...
-    }
-  },
-  cancel() { abort.abort(); }
-});
+```python
+async for chunk in provider_stream:
+    if await input_.is_disconnected():
+        # User cancelled; tear down the upstream stream cleanly.
+        break
+    if chunk.delta:
+        yield token_event({"delta": chunk.delta})
 ```
 
-When the client disconnects, `request.signal` aborts. That cascades into
-the OpenAI request, freeing server resources. The SDK catches the
-`AbortError`, the `finally` block emits the metadata log line (with
-`status: 500, errorCode: STREAM_ABORTED`), and `controller.close()` ends
-the stream cleanly.
+The `finally` block calls the provider stream's `aclose()` so the SDK's
+underlying httpx connection is released, then emits a single metadata
+log line via
+[`services.audit.log_completion`](../../backend/src/inkwell_backend/services/audit.py)
+with `status: 500, error_code: STREAM_ABORTED` when the disconnect
+happens mid-stream.
 
 ## Completion logging
 
-Inside the stream's `finally` block we emit one structured JSON line to
-stdout via [`logCompletion`](../../packages/backend/lib/audit-log.ts) —
-metadata only (action, model, token counts, latency, status, client IP
-key). It is synchronous and never throws, so logging can't break the
-response. There is no database; logs are picked up by Vercel and any log
-drain you attach.
+`log_completion` writes one structured JSON line to stdout — metadata
+only (action, model, token counts, latency, status, client IP key). It
+is synchronous and never throws, so logging can't break the response.
+There is no database; the JSON lines are picked up by whatever log
+drain you attach to the host.
 
 ## Client consumption (extension)
 
@@ -121,13 +134,13 @@ The background service worker holds the `fetch().body.getReader()` and
 parses SSE events itself rather than using `EventSource`. Why?
 
 - `EventSource` doesn't support custom headers — we need
-  `Authorization: Bearer …`.
+  `Authorization: Bearer …` when the user has configured one.
 - The MV3 service worker can be terminated; an active SSE connection
   keeps it alive for the duration of the stream.
 - Manual parsing lets us validate every event with the shared zod
   schemas before forwarding to the content script.
 
-See [`background/api-client.ts`](../../packages/extension/src/background/api-client.ts).
+See [`background/api-client.ts`](../../frontend/packages/extension/src/background/api-client.ts).
 
 ## See also
 

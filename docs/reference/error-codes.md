@@ -1,8 +1,10 @@
 # Reference: Error codes
 
 _Every code emitted by the API. Defined in
-[`packages/shared/src/errors.ts`](../../packages/shared/src/errors.ts) so
-both ends agree._
+[`frontend/packages/shared/src/errors.ts`](../../frontend/packages/shared/src/errors.ts)
+(extension) and mirrored in
+[`backend/src/inkwell_backend/domain/errors.py`](../../backend/src/inkwell_backend/domain/errors.py)
+(backend) so both ends agree._
 
 Errors use a consistent envelope:
 
@@ -40,8 +42,8 @@ There are no auth-related codes — Inkwell has no authentication.
 
 | Code | When | Retryable |
 | --- | --- | --- |
-| `VALIDATION_FAILED` | Body / query failed zod validation, or not JSON. | no |
-| `PAYLOAD_TOO_LARGE` | Body > 32 KB. | no |
+| `VALIDATION_FAILED` | Body / query failed Pydantic validation, or not JSON. | no |
+| `PAYLOAD_TOO_LARGE` | Body too large (32 KB for `/complete`, 12 MB for `/ocr`). | no |
 
 ### Limits / availability (429 / 502 / 503 / 504)
 
@@ -52,6 +54,25 @@ There are no auth-related codes — Inkwell has no authentication.
 | `UPSTREAM_ERROR` | OpenAI returned an error. | yes |
 | `TIMEOUT` | Upstream call exceeded the deadline. | yes |
 | `NETWORK_ERROR` | Network fault (also used by the extension's client). | yes |
+
+#### `RATE_LIMITED` response shape
+
+429 responses always carry a `Retry-After` header (RFC 9110, seconds)
+and a `error.details.retryAfterMs` field (delta from now, milliseconds):
+
+```http
+HTTP/1.1 429 Too Many Requests
+Retry-After: 60
+Content-Type: application/json
+
+{"error":{"code":"RATE_LIMITED","message":"Too many requests; please wait.","retryable":false,"details":{"retryAfterMs":60000}}}
+```
+
+`retryable` is `false` because the request shouldn't be re-issued
+immediately — the client must wait the indicated interval. The
+distinction matters: callers may show different UI for a temporary
+rate-limit (`Retry-After`) vs an `UPSTREAM_ERROR` (immediately
+retryable).
 
 ### Streaming
 
@@ -67,7 +88,7 @@ There are no auth-related codes — Inkwell has no authentication.
 
 ## HTTP status mapping
 
-From [`lib/responses.ts`](../../packages/backend/lib/responses.ts):
+From [`status_for_code` in `domain/errors.py`](../../backend/src/inkwell_backend/domain/errors.py):
 
 | Code | HTTP |
 | --- | --- |
@@ -84,4 +105,4 @@ From [`lib/responses.ts`](../../packages/backend/lib/responses.ts):
 ## See also
 
 - [API reference](./api.md)
-- [`packages/shared/src/errors.ts`](../../packages/shared/src/errors.ts) — the source of truth.
+- [`frontend/packages/shared/src/errors.ts`](../../frontend/packages/shared/src/errors.ts) — the source of truth.
