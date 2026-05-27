@@ -45,6 +45,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             "version": __version__,
             "environment": settings.environment,
             "has_openai": settings.has_openai,
+            "portkey_enabled": settings.portkey_enabled,
         },
     )
     mark_ready()

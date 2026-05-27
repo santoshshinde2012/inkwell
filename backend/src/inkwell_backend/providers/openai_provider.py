@@ -31,6 +31,7 @@ from .base import (
 from .mock_provider import mock_recognize, mock_stream
 from .openai_client import aclose_all as _aclose_openai_clients
 from .openai_client import get_openai_client
+from .portkey import build_request_headers
 
 _logger = logging.getLogger(__name__)
 
@@ -61,6 +62,11 @@ async def _real_stream(
             {"role": "system", "content": args.system},
             {"role": "user", "content": args.user},
         ],
+        # Per-call headers — merged onto the client's default_headers.
+        # ``build_request_headers`` returns ``None`` when nothing needs
+        # adding (Portkey disabled or no trace id), which the SDK
+        # treats as a no-op.
+        extra_headers=build_request_headers(args.trace_id),
     )
 
     try:
@@ -123,6 +129,8 @@ async def _real_recognize(args: VisionArgs) -> VisionResult:
                 ],
             },
         ],
+        # See ``_real_stream`` for the rationale.
+        extra_headers=build_request_headers(args.trace_id),
     )
 
     raw = completion.choices[0].message.content if completion.choices else ""

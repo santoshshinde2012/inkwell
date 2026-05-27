@@ -37,6 +37,11 @@ class CompletionLogEvent:
     total_tokens: int | None = None
     error_code: str | None = None
     client_request_id: str | None = None
+    via_portkey: bool | None = None
+    """True when the call was routed through the Portkey gateway, False
+    when it went direct to the vendor, ``None`` when the dimension
+    isn't meaningful (e.g. mock provider). Lets operators slice
+    latency / error metrics by transport path."""
 
 
 def log_completion(event: CompletionLogEvent) -> None:

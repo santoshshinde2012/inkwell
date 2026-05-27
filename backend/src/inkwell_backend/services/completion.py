@@ -156,8 +156,18 @@ async def _stream(input_: CompletionInput) -> AsyncIterator[bytes]:
     model_used = model
     error_code: str | None = None
 
+    # Use the header-sourced request id when present (one canonical
+    # value for cross-layer correlation), fall back to the in-body
+    # field so callers that only set one path still get traced.
+    trace_id = input_.request_id or request.client_request_id
+
     provider_stream = provider.stream_completion(
-        ProviderCompletionArgs(model=model, system=prompt.system, user=prompt.user)
+        ProviderCompletionArgs(
+            model=model,
+            system=prompt.system,
+            user=prompt.user,
+            trace_id=trace_id,
+        )
     )
 
     # Sentinel used to distinguish "no chunk arrived before the
@@ -241,6 +251,13 @@ async def _stream(input_: CompletionInput) -> AsyncIterator[bytes]:
             with contextlib.suppress(Exception):
                 await aclose()
 
+        # Only meaningful when a real upstream was actually hit. The
+        # mock branch never touches the network, so the dimension
+        # would be misleading there.
+        via_portkey: bool | None = (
+            settings.portkey_enabled if settings.has_openai else None
+        )
+
         log_completion(
             CompletionLogEvent(
                 client_key=input_.client_key,
@@ -255,10 +272,8 @@ async def _stream(input_: CompletionInput) -> AsyncIterator[bytes]:
                 duration_ms=int((time.monotonic() - started_at) * 1_000),
                 status=500 if error_code else 200,
                 error_code=error_code,
-                # Prefer the header-sourced request id (one canonical
-                # value for cross-layer correlation), fall back to
-                # the in-body field if the client only set that one.
-                client_request_id=input_.request_id or request.client_request_id,
+                client_request_id=trace_id,
+                via_portkey=via_portkey,
             )
         )
 

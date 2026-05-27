@@ -20,6 +20,10 @@ dependencies = [
     "pydantic-settings>=2.6,<3.0",
     # Official OpenAI SDK — async client + streaming chat completions.
     "openai>=1.54,<2.0",
+    # Portkey AI gateway SDK — used only for `createHeaders()` and the
+    # gateway URL constant. The gateway is OpenAI-SDK-compatible, so the
+    # rest of our integration keeps using the `openai` client.
+    "portkey-ai>=1.15,<3.0",
     # JSON-formatted stdlib logger; structured logs without a new framework.
     "python-json-logger>=2.0,<3.0",
 ]

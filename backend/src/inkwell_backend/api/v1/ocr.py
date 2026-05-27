@@ -42,7 +42,6 @@ async def ocr(
     ip: str = Depends(client_ip),
     request_id: str | None = Depends(client_request_id),
 ) -> JSONResponse:
-    del request_id  # reserved for future audit logging on OCR
     content_bytes = int(request.headers.get("content-length") or 0)
 
     # Short-circuit grossly oversized bodies before parsing them — we
@@ -82,6 +81,7 @@ async def ocr(
                 request=parsed,
                 content_bytes=content_bytes,
                 is_disconnected=request.is_disconnected,
+                request_id=request_id,
             )
         )
     except Exception:

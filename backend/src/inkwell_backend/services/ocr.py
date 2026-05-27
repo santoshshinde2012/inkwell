@@ -48,6 +48,11 @@ class OcrInput:
     content_bytes: int
     is_disconnected: Callable[[], Awaitable[bool]]
 
+    request_id: str | None = None
+    """Optional ``X-Client-Request-Id`` header value. Forwarded to the
+    provider as a trace id so gateway-side logs (e.g. Portkey) can be
+    correlated with our request lifecycle."""
+
 
 OcrResult = OcrResponse | ApiError
 
@@ -96,6 +101,7 @@ async def run_ocr(input_: OcrInput) -> OcrResult:
         # the wire format of base64 (newlines etc.).
         image_base64="".join(input_.request.image_base64.split()),
         mime_type=input_.request.mime_type,
+        trace_id=input_.request_id,
     )
 
     try:

@@ -61,6 +61,12 @@ def _isolate_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setenv("EXTRA_ALLOWED_ORIGINS", "")
     monkeypatch.setenv("OPENAI_API_KEY", "")
     monkeypatch.setenv("OPENAI_DEFAULT_MODEL", "gpt-4o-mini")
+    # Portkey defaults — explicit OFF so a developer's local Portkey
+    # config can't leak into the test suite.
+    monkeypatch.setenv("USE_PORTKEY", "false")
+    monkeypatch.setenv("PORTKEY_API_KEY", "")
+    monkeypatch.setenv("PORTKEY_VIRTUAL_KEY", "")
+    monkeypatch.setenv("PORTKEY_CONFIG", "")
     monkeypatch.setenv("LOG_LEVEL", "WARNING")
     settings_mod.get_settings.cache_clear()
     yield

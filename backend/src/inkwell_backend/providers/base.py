@@ -30,6 +30,12 @@ class ProviderCompletionArgs:
     system: str
     user: str
 
+    trace_id: str | None = None
+    """Optional correlation id forwarded to the gateway as a trace
+    header (Portkey: ``x-portkey-trace-id``). Lets operators link our
+    audit log line to the gateway-side request log. Providers that
+    don't sit behind a gateway ignore it."""
+
 
 @dataclass(frozen=True, slots=True)
 class CompletionUsage:
@@ -72,6 +78,10 @@ class VisionArgs:
     user: str
     image_base64: str
     mime_type: str
+
+    trace_id: str | None = None
+    """Optional correlation id forwarded to the gateway. See
+    :attr:`ProviderCompletionArgs.trace_id` for semantics."""
 
 
 @dataclass(frozen=True, slots=True)

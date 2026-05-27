@@ -17,9 +17,9 @@ not this file.
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import AliasChoices, Field, field_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -85,6 +85,36 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("DEFAULT_MODEL", "OPENAI_DEFAULT_MODEL"),
     )
 
+    # --- Portkey AI gateway (optional) -----------------------------------
+    #
+    # When ``use_portkey`` is True every provider client is constructed
+    # to route through the Portkey gateway instead of calling the vendor
+    # API directly. Gives us observability, caching, retries, fallbacks,
+    # and centralised secret management without changing any service /
+    # route code. Toggle is explicit (not "key-set means on") so the
+    # credentials can stay in ``.env`` while Portkey is paused.
+    use_portkey: bool = False
+
+    # Portkey project / workspace key. Required when ``use_portkey`` is
+    # True — the cross-field validator below fails startup if it's missing.
+    portkey_api_key: str | None = None
+
+    # Optional Portkey "virtual key" — when set, Portkey's vault provides
+    # the underlying provider credentials and ``openai_api_key`` can be
+    # left blank. Recommended for production so secrets stay out of the
+    # backend's env entirely.
+    portkey_virtual_key: str | None = None
+
+    # Optional Portkey config id — points at a saved gateway config
+    # (cache TTLs, fallbacks, guardrails). Leaving this unset uses the
+    # account default.
+    portkey_config: str | None = None
+
+    # Gateway base URL. Defaults to the public SaaS endpoint; override
+    # for a self-hosted gateway (e.g. ``http://portkey:8787/v1`` inside
+    # a docker network).
+    portkey_base_url: str = "https://api.portkey.ai/v1"
+
     # Logging verbosity.
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
@@ -95,8 +125,28 @@ class Settings(BaseSettings):
         return self.environment == "production"
 
     @property
+    def portkey_enabled(self) -> bool:
+        """True when the gateway should be used.
+
+        Both the toggle and the project key must be present — the
+        ``model_validator`` below enforces this combination so this
+        property is just a positive assertion.
+        """
+        return bool(self.use_portkey and self.portkey_api_key)
+
+    @property
     def has_openai(self) -> bool:
-        """True when real credentials are configured; mock otherwise."""
+        """True when a usable OpenAI upstream is reachable — directly
+        with an OpenAI key, or via Portkey (with either a virtual key
+        or a real OpenAI key forwarded through the gateway).
+
+        Drives the mock-vs-real branch in the provider; the mock path
+        kicks in only when no usable credential combination exists.
+        """
+        if self.portkey_enabled:
+            return bool(
+                self.portkey_virtual_key or (self.openai_api_key and self.openai_api_key.strip())
+            )
         return bool(self.openai_api_key and self.openai_api_key.strip())
 
     @property
@@ -115,6 +165,31 @@ class Settings(BaseSettings):
     @classmethod
     def _strip_model_id(cls, value: str) -> str:
         return value.strip()
+
+    @field_validator("portkey_base_url")
+    @classmethod
+    def _strip_portkey_url(cls, value: str) -> str:
+        # Trailing slashes break the OpenAI SDK's URL composition (it
+        # appends ``/chat/completions`` and a doubled slash trips some
+        # gateways). Strip eagerly so misconfiguration fails loud.
+        return value.strip().rstrip("/")
+
+    @model_validator(mode="after")
+    def _validate_portkey_combination(self) -> Self:
+        """Fail loud at startup when Portkey is toggled on without a key.
+
+        Catches the most common misconfiguration: someone flipped
+        ``USE_PORTKEY=true`` but forgot the project key. Without this
+        check the first request would silently fall back to direct
+        OpenAI (when ``OPENAI_API_KEY`` is set) or to the mock — both
+        confusing and possibly billing-relevant.
+        """
+        if self.use_portkey and not self.portkey_api_key:
+            raise ValueError(
+                "USE_PORTKEY=true requires PORTKEY_API_KEY to be set. "
+                "Either provide the key or set USE_PORTKEY=false."
+            )
+        return self
 
 
 @lru_cache(maxsize=1)

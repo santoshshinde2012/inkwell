@@ -1,7 +1,9 @@
 # `@inkwell/backend` — Python (FastAPI) backend
 
-The Inkwell backend. Anonymous, no database, single external
-dependency (OpenAI). Exposes `/api/v1/{health,live,ready,version,models,complete,ocr}`
+The Inkwell backend. Anonymous, no database. The default upstream is
+OpenAI; routes can optionally go through the Portkey AI gateway for
+observability, caching, retries, fallbacks, and centralised secret
+management. Exposes `/api/v1/{health,live,ready,version,models,complete,ocr}`
 for the Chrome extension and operators.
 
 ## Stack
@@ -13,6 +15,7 @@ for the Chrome extension and operators.
 | ASGI server | Uvicorn |
 | Validation / settings | Pydantic v2 + pydantic-settings |
 | OpenAI client | Official `openai` Python SDK (async) |
+| LLM gateway (optional) | Official `portkey-ai` SDK — transport-level toggle |
 | Streaming | Server-Sent Events via `StreamingResponse` |
 | Lint + format | Ruff |
 | Type checking | mypy strict |
@@ -73,10 +76,11 @@ src/inkwell_backend/
 │   └── audit.py           # metadata-only structured logging
 │
 ├── providers/             # pluggable model integrations
-│   ├── base.py            # Protocol
-│   ├── registry.py        # model id → provider lookup
+│   ├── base.py            # Protocol + arg/result dataclasses
+│   ├── registry.py        # model id → provider, lifecycle helpers
+│   ├── portkey.py         # gateway toggle — base_url + header builders
 │   ├── openai_client.py   # process-wide AsyncOpenAI singleton + timeouts
-│   ├── openai_provider.py
+│   ├── openai_provider.py # chat + vision (single end-to-end wrapper)
 │   └── mock_provider.py   # zero-config local dev
 │
 └── api/                   # HTTP layer (FastAPI-aware)
@@ -118,6 +122,8 @@ make docker      # build production image
 
 ## Production
 
+Direct to OpenAI:
+
 ```bash
 docker build -t inkwell-backend:latest .
 docker run --rm -p 8000:8000 \
@@ -126,9 +132,59 @@ docker run --rm -p 8000:8000 \
     inkwell-backend:latest
 ```
 
+Through the Portkey gateway (virtual key — production-recommended,
+provider secret stays in Portkey's vault):
+
+```bash
+docker run --rm -p 8000:8000 \
+    -e USE_PORTKEY=true \
+    -e PORTKEY_API_KEY=pk-... \
+    -e PORTKEY_VIRTUAL_KEY=vk-... \
+    -e PORTKEY_CONFIG=cfg-... \
+    -e ALLOWED_EXTENSION_IDS=chrome-extension://<your-id> \
+    inkwell-backend:latest
+```
+
 The image runs as a non-root user, includes a Docker `HEALTHCHECK`
 hitting `/api/v1/health`, and respects `X-Forwarded-For` for rate
 limiting behind a reverse proxy.
+
+## Portkey AI gateway
+
+Portkey is an LLM gateway that fronts the vendor APIs (OpenAI today,
+Anthropic / Gemini / etc. tomorrow). Integration is a **transport-level
+toggle**: when `USE_PORTKEY=true`, the same `AsyncOpenAI` client is
+constructed pointing at the gateway with a few `x-portkey-*` headers.
+Service code, route handlers, the provider Protocol, and tests are
+unchanged.
+
+Config:
+
+| Variable | Purpose |
+|---|---|
+| `USE_PORTKEY` | Explicit on/off (default `false`). Set `true` to route through Portkey. |
+| `PORTKEY_API_KEY` | Required when `USE_PORTKEY=true`. Startup fails loud if missing. |
+| `PORTKEY_VIRTUAL_KEY` | Optional. When set, Portkey's vault provides the upstream credential and `OPENAI_API_KEY` can be left blank. |
+| `PORTKEY_CONFIG` | Optional. Points at a saved Portkey config (cache TTLs, fallbacks, guardrails). |
+| `PORTKEY_BASE_URL` | Override only for a self-hosted gateway. Defaults to `https://api.portkey.ai/v1`. |
+
+Best-practice notes:
+
+- **Distributed tracing** is wired automatically: when an extension
+  sends `X-Client-Request-Id` (or `clientRequestId` in the body),
+  we forward it as `x-portkey-trace-id` on every gateway call.
+  Gateway logs and our `inkwell.audit` log line share the id, so a
+  failed request is one search away in either system.
+- **Audit observability**: the per-request audit log line carries a
+  `via_portkey: bool` field whenever a real upstream was actually hit
+  (mock calls leave it null), so operators can slice latency and
+  error metrics by transport path.
+- **Fail-loud config**: flipping `USE_PORTKEY=true` without
+  `PORTKEY_API_KEY` raises a Pydantic `ValidationError` at startup,
+  not silently at first request.
+- **Zero cold-start cost when off**: the `portkey-ai` SDK is lazy-
+  imported only inside the toggle path; deployments that don't use
+  the gateway never load it.
 
 ## Operational notes
 
@@ -139,9 +195,10 @@ limiting behind a reverse proxy.
 - **No content logging.** Only request metadata is logged (action,
   model, token counts, latency, status). Prompts and completions are
   never written.
-- **Mock provider** kicks in when `OPENAI_API_KEY` is unset, so local
-  dev needs zero secrets and produces deterministic output. Same code
-  path serves the OCR mock placeholder.
+- **Mock provider** kicks in when no usable upstream credential is
+  configured (no `OPENAI_API_KEY` and no `PORTKEY_VIRTUAL_KEY`), so
+  local dev needs zero secrets and produces deterministic output. Same
+  code path serves the OCR mock placeholder.
 - **Strict CORS allow-list** for `/api/v1/*`. Dev convenience allows
   any `chrome-extension://` origin so unpacked-load doesn't need
   manually configuring the new id in `.env`; production deployments
