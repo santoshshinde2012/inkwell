@@ -18,7 +18,7 @@ from .api.middleware import install as install_middleware
 from .api.v1 import router as v1_router
 from .api.v1.health import mark_ready, mark_unready
 from .logging_setup import configure_logging
-from .providers.openai_client import aclose_all as aclose_openai_clients
+from .providers import aclose_all_providers
 from .settings import Settings, get_settings
 
 _logger = logging.getLogger(__name__)
@@ -33,8 +33,10 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     * Flip the readiness flag so ``GET /api/v1/ready`` starts returning
       200 once the worker has finished warming up. Rolling deploys
       hold traffic off until this fires.
-    * Close any cached OpenAI clients on shutdown so a graceful
-      SIGTERM doesn't leave dangling httpx connections.
+    * Close every registered provider's upstream resources on shutdown
+      so a graceful SIGTERM doesn't leave dangling connections. The
+      provider package decides what "close" means per vendor — this
+      hook stays vendor-neutral.
     """
     settings: Settings = app.state.settings
     _logger.info(
@@ -52,7 +54,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         # mark unready BEFORE we close upstream resources so in-flight
         # readiness probes flip to 503 first.
         mark_unready()
-        await aclose_openai_clients()
+        await aclose_all_providers()
         _logger.info("inkwell-backend shutting down")
 
 

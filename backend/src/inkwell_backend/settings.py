@@ -9,8 +9,9 @@ All ``os.environ`` access goes through this module so:
 * Tests build a custom Settings to override values without monkey-
   patching env vars.
 
-There is no authentication and no database. The only external
-dependency is OpenAI.
+There is no authentication and no database. The default external
+dependency is OpenAI; swap providers by editing the providers package,
+not this file.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -69,9 +70,20 @@ class Settings(BaseSettings):
     # dev or staging proxies). Production deployments leave this empty.
     extra_allowed_origins: str = ""
 
-    # OpenAI — leave blank to keep the mock streaming response.
+    # OpenAI credentials — leave blank to keep the mock streaming
+    # response. Per-vendor keys live as siblings (e.g. ``anthropic_api_key``
+    # when that provider is added); the provider implementation owns
+    # which field it reads.
     openai_api_key: str | None = None
-    openai_default_model: str = "gpt-4o-mini"
+
+    # Default model id when the client does not specify one. Vendor-
+    # neutral — the catalog in ``domain/models.py`` resolves the id to
+    # the right provider. ``OPENAI_DEFAULT_MODEL`` is accepted for
+    # backward compatibility with older ``.env`` files.
+    default_model: str = Field(
+        default="gpt-4o-mini",
+        validation_alias=AliasChoices("DEFAULT_MODEL", "OPENAI_DEFAULT_MODEL"),
+    )
 
     # Logging verbosity.
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
@@ -99,7 +111,7 @@ class Settings(BaseSettings):
 
     # --- Validators --------------------------------------------------------
 
-    @field_validator("openai_default_model")
+    @field_validator("default_model")
     @classmethod
     def _strip_model_id(cls, value: str) -> str:
         return value.strip()

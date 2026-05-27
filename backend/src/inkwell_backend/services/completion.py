@@ -146,7 +146,7 @@ async def _stream(input_: CompletionInput) -> AsyncIterator[bytes]:
     last_yield_at = started_at
     request = input_.request
 
-    model = request.model or settings.openai_default_model or DEFAULT_MODEL_ID
+    model = request.model or settings.default_model or DEFAULT_MODEL_ID
     provider = get_provider_for_model(model)
     prompt = build_prompt(request)
 

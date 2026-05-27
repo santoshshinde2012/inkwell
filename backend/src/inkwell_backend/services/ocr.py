@@ -4,15 +4,16 @@ Pure domain orchestration for /api/v1/ocr — kept out of the route
 handler so HTTP concerns stay thin and this stays unit-testable.
 
 There is no authentication and no database. The request is anonymous
-and rate-limited by client IP, the same way /complete is. When
-``OPENAI_API_KEY`` is unset, the pipeline returns a deterministic mock
-response so local dev needs no secrets.
+and rate-limited by client IP, the same way /complete is. When the
+configured provider has no credentials, it transparently returns a
+deterministic mock response so local dev needs no secrets — this file
+no longer knows or cares which vendor is on the other end.
 
 Flow::
 
     enforce_size → validate → rate_limit(IP)
                                        ↓
-                       openai.vision → return text
+                       provider.recognize_text → return text
 """
 
 from __future__ import annotations
@@ -23,9 +24,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ..domain.errors import ApiError, ErrorCode, api_error
-from ..domain.limits import MAX_OCR_REQUEST_BYTES, MAX_OCR_RESPONSE_TOKENS
+from ..domain.limits import MAX_OCR_REQUEST_BYTES
+from ..domain.models import DEFAULT_MODEL_ID
+from ..domain.prompts import OCR_SYSTEM_PROMPT, OCR_USER_PROMPT
 from ..domain.schemas import OcrRequest, OcrResponse
-from ..providers.openai_client import get_openai_client
+from ..providers import get_provider_for_model
+from ..providers.base import VisionArgs
 from ..settings import get_settings
 from .rate_limit import check_rate_limit
 
@@ -33,19 +37,6 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
 _logger = logging.getLogger(__name__)
-
-
-# Single system prompt for image-to-text. Kept explicit so the model
-# returns the recognised text verbatim and doesn't paraphrase, comment,
-# or insert a "Here is the text from the image:" preamble.
-_OCR_SYSTEM_PROMPT = (
-    "You are an OCR engine. Extract every legible piece of text from the "
-    "image, including UI labels, code, captions, and small print. Preserve "
-    "line breaks where the visual layout suggests separate lines. Output "
-    "ONLY the recognised text — no preamble, no explanation, no markdown "
-    "formatting, no quoting. If the image contains no readable text, "
-    "respond with an empty message."
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,7 +62,7 @@ def _enforce_size(bytes_: int) -> ApiError | None:
 
 
 async def run_ocr(input_: OcrInput) -> OcrResult:
-    """Run pre-flight checks; on success call the vision model."""
+    """Run pre-flight checks; on success delegate to the provider."""
     settings = get_settings()
 
     size_err = _enforce_size(input_.content_bytes)
@@ -94,42 +85,21 @@ async def run_ocr(input_: OcrInput) -> OcrResult:
     if await input_.is_disconnected():
         return api_error(ErrorCode.STREAM_ABORTED, "Client closed the request.")
 
-    # Mock path keeps local dev usable with no API key.
-    if not settings.has_openai:
-        return OcrResponse(
-            text=(
-                "[mock OCR text — set OPENAI_API_KEY in backend/.env to enable real recognition]"
-            ),
-            model=None,
-        )
+    model = settings.default_model or DEFAULT_MODEL_ID
+    provider = get_provider_for_model(model)
 
-    client = get_openai_client()
-    model = settings.openai_default_model
-
-    cleaned_b64 = "".join(input_.request.image_base64.split())
-    data_url = f"data:{input_.request.mime_type};base64,{cleaned_b64}"
+    args = VisionArgs(
+        model=model,
+        system=OCR_SYSTEM_PROMPT,
+        user=OCR_USER_PROMPT,
+        # Strip whitespace so the provider doesn't have to worry about
+        # the wire format of base64 (newlines etc.).
+        image_base64="".join(input_.request.image_base64.split()),
+        mime_type=input_.request.mime_type,
+    )
 
     try:
-        completion = await client.chat.completions.create(
-            model=model,
-            # OCR responses can be long for dense screenshots — give them
-            # more headroom than the completion path's default.
-            max_tokens=MAX_OCR_RESPONSE_TOKENS,
-            temperature=0,
-            messages=[
-                {"role": "system", "content": _OCR_SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": "Recognise the text in this image."},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": data_url, "detail": "high"},
-                        },
-                    ],
-                },
-            ],
-        )
+        result = await provider.recognize_text(args)
     except Exception:
         if await input_.is_disconnected():
             return api_error(ErrorCode.STREAM_ABORTED, "Client closed the request.")
@@ -139,6 +109,4 @@ async def run_ocr(input_: OcrInput) -> OcrResult:
             "The OCR model failed to respond. Try again, or use a smaller image.",
         )
 
-    raw = completion.choices[0].message.content if completion.choices else ""
-    text = (raw or "").strip() if isinstance(raw, str) else ""
-    return OcrResponse(text=text, model=completion.model or model)
+    return OcrResponse(text=result.text, model=result.model)

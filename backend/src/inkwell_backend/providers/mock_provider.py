@@ -11,7 +11,13 @@ import asyncio
 import random
 from collections.abc import AsyncIterator
 
-from .base import CompletionChunk, CompletionUsage, ProviderCompletionArgs
+from .base import (
+    CompletionChunk,
+    CompletionUsage,
+    ProviderCompletionArgs,
+    VisionArgs,
+    VisionResult,
+)
 
 _MOCK_PHRASES: tuple[str, ...] = (
     "Thanks for reaching out — ",
@@ -24,6 +30,13 @@ _MOCK_PHRASES: tuple[str, ...] = (
     "specific points to add.\n\n",
     "(This is a mock response from the local backend. ",
     "Configure OPENAI_API_KEY to see real model output.)",
+)
+
+# Placeholder served by ``mock_recognize`` when no credentials are
+# configured. Word-for-word string is asserted by tests, so do not edit
+# without updating ``tests/test_ocr.py`` in lock-step.
+MOCK_OCR_TEXT: str = (
+    "[mock OCR text — set OPENAI_API_KEY in backend/.env to enable real recognition]"
 )
 
 
@@ -45,3 +58,14 @@ async def mock_stream(args: ProviderCompletionArgs) -> AsyncIterator[CompletionC
             model=f"{args.model} (mock)",
         )
     )
+
+
+async def mock_recognize(args: VisionArgs) -> VisionResult:
+    """Return a fixed placeholder so OCR works in local dev with no key.
+
+    The model id is annotated ``" (mock)"`` so any caller logging it
+    can see at a glance that no real upstream was hit. The placeholder
+    string itself is intentionally bracketed so a downstream UI can
+    detect and badge it if desired.
+    """
+    return VisionResult(text=MOCK_OCR_TEXT, model=f"{args.model} (mock)")
