@@ -45,7 +45,11 @@ import { SOURCE_PLACEHOLDERS } from "./constants";
 import { useAssistantSettings } from "./useAssistantSettings";
 import { useStreamingResult } from "./useStreamingResult";
 import { buildTargetOptions, orderLanguages } from "./targetOptions";
-import { captureActiveSelection, captureErrorMessage } from "./captureSelection";
+import {
+  captureActiveSelection,
+  captureActiveTabContext,
+  captureErrorMessage,
+} from "./captureSelection";
 import { extractTextFromImage, isImageBlob, OcrError, type OcrProgress } from "../../lib/ocr";
 
 export interface AssistantViewProps {
@@ -238,10 +242,17 @@ export function AssistantView({
       return;
     }
 
+    // The side panel is itself an extension page, so `window.location`
+    // resolves to a `chrome-extension://` URL — which the backend's
+    // `AnyHttpUrl`-typed `pageUrl` rejects with `VALIDATION_FAILED`.
+    // Pull the real http(s) URL/title from the user's active tab when
+    // available; otherwise omit `pageUrl` entirely so the request stays
+    // schema-valid.
+    const activeTab = await captureActiveTabContext();
     const base = {
       site: "sidepanel",
-      pageTitle: document.title.slice(0, 300),
-      pageUrl: window.location.origin + window.location.pathname,
+      ...(activeTab.pageTitle ? { pageTitle: activeTab.pageTitle } : {}),
+      ...(activeTab.pageUrl ? { pageUrl: activeTab.pageUrl } : {}),
     };
     const context: RequestContext =
       action === "reply" || action === "translate"
@@ -263,8 +274,12 @@ export function AssistantView({
       inputText: trimmed || trimmedInstruction,
       outputText: "",
       site: base.site,
-      conversationUrl: base.pageUrl,
-      pageTitle: base.pageTitle,
+      // History is local-only, so the chrome-extension URL of the panel
+      // would be valid here — but pairing entries with the active tab's
+      // URL keeps the per-conversation grouping useful (matches what the
+      // popover stores). Empty strings are fine when neither is known.
+      conversationUrl: activeTab.pageUrl ?? "",
+      pageTitle: activeTab.pageTitle ?? "",
     };
 
     result.beginStream(streamId, pendingHistory);

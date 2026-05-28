@@ -1,7 +1,8 @@
-// Asks the active tab's content script for whatever text the user has
-// selected and returns either the trimmed string or a UX-ready error
-// message. Pulled out of the view so React state ownership stays with
-// the caller and this function stays trivially testable.
+// Helpers that bridge the side panel (an extension page) to whatever is
+// happening in the user's active tab.
+//
+// Pulled out of the view so React state ownership stays with the caller
+// and these stay trivially testable.
 
 export type CaptureResult = { kind: "ok"; text: string } | { kind: "empty" } | { kind: "blocked" };
 
@@ -30,3 +31,46 @@ export const captureActiveSelection = async (): Promise<CaptureResult> => {
 
 export const captureErrorMessage = (kind: Exclude<CaptureResult["kind"], "ok">): string =>
   MESSAGES[kind];
+
+// Title cap mirrors the shared schema's `PageTitle` constraint (max 300).
+const MAX_PAGE_TITLE = 300;
+
+// Snapshot of the active tab the side panel can attach to a completion
+// request. Both fields are optional because the side panel itself is an
+// extension page (chrome-extension://…) — when the user is on an internal
+// browser page, a sandboxed iframe, or before `activeTab` is granted, we
+// simply have nothing to send.
+export interface ActiveTabContext {
+  pageTitle?: string;
+  pageUrl?: string;
+}
+
+/**
+ * Read the active tab's URL + title for use as completion context.
+ *
+ * The side panel CANNOT use `window.location` for this — the side panel
+ * is an extension page and `window.location.origin` is
+ * `chrome-extension://<id>`, which the backend's `AnyHttpUrl`-typed
+ * `pageUrl` field rejects with `VALIDATION_FAILED`. The shared zod
+ * schema is looser (any URL) so the request passes client-side and
+ * the failure only surfaces at the server.
+ *
+ * We pull the values from `chrome.tabs.query` instead, and only return
+ * a `pageUrl` when the scheme is http/https — silently omitting it
+ * otherwise so the backend's Pydantic check stays happy.
+ */
+export const captureActiveTabContext = async (): Promise<ActiveTabContext> => {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab) return {};
+    const out: ActiveTabContext = {};
+    if (tab.title) out.pageTitle = tab.title.slice(0, MAX_PAGE_TITLE);
+    const url = tab.url ?? "";
+    if (url.startsWith("https://") || url.startsWith("http://")) {
+      out.pageUrl = url;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+};
