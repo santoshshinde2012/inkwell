@@ -11,9 +11,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
-
-from ..domain.models import ModelProvider
+from typing import Protocol
 
 # ---------------------------------------------------------------------------
 # Chat completion
@@ -99,7 +97,6 @@ class VisionResult:
 # ---------------------------------------------------------------------------
 
 
-@runtime_checkable
 class CompletionProvider(Protocol):
     """Every model provider implements this protocol.
 
@@ -108,20 +105,23 @@ class CompletionProvider(Protocol):
     signalled by closing the iterator (the caller awaits ``aclose()``);
     implementations must clean up upstream resources on cancellation.
 
-    A provider that is NOT configured (no credentials) must still
-    implement both methods and return usable mock data so local dev
-    needs no secrets.
+    Providers are "always usable" from the caller's perspective: if a
+    real upstream isn't reachable (no credentials, settings paused),
+    the registry routes to the mock provider instead. Concrete
+    implementations therefore don't carry mock-fallback logic — they
+    advertise their readiness via :attr:`configured` and the registry
+    decides which provider to hand out.
     """
-
-    id: ModelProvider
 
     @property
     def configured(self) -> bool:
-        """True when real credentials are wired up.
+        """True when this provider has real credentials wired up.
 
-        Declared as a property — not a plain attribute — so concrete
-        implementations can derive it lazily from settings without
-        flagging a Protocol mismatch in mypy.
+        The registry uses this to decide whether to return ``self`` or
+        the mock fallback for a given model lookup. Declared as a
+        property — not a plain attribute — so concrete implementations
+        can derive it lazily from settings without flagging a Protocol
+        mismatch in mypy.
         """
         ...
 

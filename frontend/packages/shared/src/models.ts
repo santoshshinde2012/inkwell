@@ -91,31 +91,15 @@ export const MODEL_CATALOG: readonly ModelInfo[] = parsed.models;
  *  `string` and is validated where rendering happens. */
 export type ModelId = string;
 
-/** Narrow union of bundled ids, e.g. "gpt-4o-mini" | "gpt-4o". Useful
- *  to callers that need to distinguish the fallback list from
- *  arbitrary runtime ids. */
-export type BundledModelId = string;
-
-/** Non-empty tuple of bundled ids — shaped for `z.enum(...)` callers
- *  who want strict validation against the fallback list. */
-export const MODEL_IDS = MODEL_CATALOG.map((m) => m.id) as [string, ...string[]];
-
 /** Product default — the backend's `default` field. */
 export const DEFAULT_MODEL_ID: string = parsed.default;
 
-/** Look up a model's metadata by id. Returns undefined for unknown ids. */
+/** Look up a model's metadata by id. Returns undefined for unknown
+ *  ids. Resolves against the *bundled* fallback; UI surfaces that
+ *  need the live catalog should use the cached `/api/v1/models`
+ *  response instead. */
 export const getModelInfo = (id: string): ModelInfo | undefined =>
   MODEL_CATALOG.find((m) => m.id === id);
-
-/** Type guard: is this string a known *bundled* model id? UI code
- *  generally trusts the backend catalog instead. */
-export const isModelId = (id: unknown): id is BundledModelId =>
-  typeof id === "string" && MODEL_CATALOG.some((m) => m.id === id);
-
-/** The provider that serves a given model id (falls back to the
- *  default). */
-export const providerForModel = (id: string): ModelProvider =>
-  getModelInfo(id)?.provider ?? MODEL_CATALOG[0]!.provider;
 
 // ---------------------------------------------------------------------------
 // Remote catalog — shape of `GET /api/v1/models`
@@ -127,13 +111,10 @@ export const providerForModel = (id: string): ModelProvider =>
 // surfaces render `label`, `description`, and `tier`; the `provider`
 // field is opaque from the extension's perspective.
 
-/** Zod schema for a single row in the live `/api/v1/models` payload.
- *  Reused by the extension's fetch layer to validate at the wire
- *  boundary — see `extension/src/lib/models.ts`. The schema mirrors
- *  the backend's `_CatalogEntry` Pydantic model, with `provider`
- *  widened to a free-form string so a backend that adds a vendor
- *  doesn't trip the frontend's validator. */
-export const RemoteModelInfoSchema = z.object({
+// Row schema is an internal building block — `ModelCatalogResponseSchema`
+// is the only thing callers need. Kept un-exported so the public
+// surface of @inkwell/shared stays small.
+const RemoteModelInfoSchema = z.object({
   id: z.string().min(1).max(120),
   label: z.string().min(1).max(80),
   provider: z.string().min(1),
@@ -141,7 +122,10 @@ export const RemoteModelInfoSchema = z.object({
   tier: z.enum(TIERS),
 });
 
-/** Zod schema for the full `/api/v1/models` response body. */
+/** Zod schema for the full `/api/v1/models` response body. Used by
+ *  the extension's fetch layer to validate at the wire boundary and
+ *  by the storage cache validator — see
+ *  `extension/src/lib/models.ts`. */
 export const ModelCatalogResponseSchema = z.object({
   default: z.string().min(1),
   models: z.array(RemoteModelInfoSchema).min(1),

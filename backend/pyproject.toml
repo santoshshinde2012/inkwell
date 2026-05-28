@@ -54,6 +54,12 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/inkwell_backend"]
+# Hatchling includes non-Python files inside a packaged tree by
+# default, but we list the config JSON explicitly so a future build
+# config tweak can't accidentally drop it. ``models.catalog.json`` is
+# read by ``domain/models.py`` via ``importlib.resources`` — the wheel
+# must ship it or import-time validation fails.
+force-include = { "src/inkwell_backend/config/models.catalog.json" = "inkwell_backend/config/models.catalog.json" }
 
 # ---------------------------------------------------------------------------
 # Ruff — lint + format (replaces black + isort + flake8 + pylint)

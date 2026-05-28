@@ -1,0 +1,20 @@
+{
+  "$schema": "./models.catalog.schema.json",
+  "default": "gpt-4o-mini",
+  "models": [
+    {
+      "id": "gpt-4o-mini",
+      "label": "GPT-4o mini",
+      "provider": "openai",
+      "description": "Fast and economical — great for everyday replies.",
+      "tier": "fast"
+    },
+    {
+      "id": "gpt-4o",
+      "label": "GPT-4o",
+      "provider": "openai",
+      "description": "Higher quality, a little slower — for nuanced or long-form writing.",
+      "tier": "quality"
+    }
+  ]
+}

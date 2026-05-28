@@ -1,8 +1,14 @@
 """Deterministic mock provider.
 
-Used by every provider when its credentials aren't configured, so local
-dev needs zero secrets. The text is obviously fake so callers can't
-mistake it for real model output.
+Used by the registry as the fallback when a real provider has no
+credentials wired up, so local development needs zero secrets. The
+text is obviously synthetic so callers can't mistake it for real
+model output, and tests can assert against the mock string verbatim.
+
+This module is a first-class :class:`CompletionProvider`. It is not
+imported by individual provider modules; the registry alone decides
+when to serve mock data, which keeps real-provider implementations
+ignorant of the fallback (Single Responsibility Principle).
 """
 
 from __future__ import annotations
@@ -13,6 +19,7 @@ from collections.abc import AsyncIterator
 
 from .base import (
     CompletionChunk,
+    CompletionProvider,
     CompletionUsage,
     ProviderCompletionArgs,
     VisionArgs,
@@ -32,7 +39,7 @@ _MOCK_PHRASES: tuple[str, ...] = (
     "Configure OPENAI_API_KEY to see real model output.)",
 )
 
-# Placeholder served by ``mock_recognize`` when no credentials are
+# Placeholder served by the mock vision path when no credentials are
 # configured. Word-for-word string is asserted by tests, so do not edit
 # without updating ``tests/test_ocr.py`` in lock-step.
 MOCK_OCR_TEXT: str = (
@@ -40,7 +47,7 @@ MOCK_OCR_TEXT: str = (
 )
 
 
-async def mock_stream(args: ProviderCompletionArgs) -> AsyncIterator[CompletionChunk]:
+async def _mock_stream(args: ProviderCompletionArgs) -> AsyncIterator[CompletionChunk]:
     """Yield deterministic text with realistic inter-token delays."""
     for phrase in _MOCK_PHRASES:
         yield CompletionChunk(delta=phrase)
@@ -60,12 +67,36 @@ async def mock_stream(args: ProviderCompletionArgs) -> AsyncIterator[CompletionC
     )
 
 
-async def mock_recognize(args: VisionArgs) -> VisionResult:
-    """Return a fixed placeholder so OCR works in local dev with no key.
+class MockProvider:
+    """The deterministic fallback used when no real provider is configured.
 
-    The model id is annotated ``" (mock)"`` so any caller logging it
-    can see at a glance that no real upstream was hit. The placeholder
-    string itself is intentionally bracketed so a downstream UI can
-    detect and badge it if desired.
+    Always reports ``configured = True`` — the mock has no external
+    dependencies, so it can always serve a response. The registry only
+    ever instantiates one of these and hands it out when the real
+    provider for the requested model lacks credentials.
     """
-    return VisionResult(text=MOCK_OCR_TEXT, model=f"{args.model} (mock)")
+
+    @property
+    def configured(self) -> bool:
+        # The mock is the fallback — by definition always ready.
+        return True
+
+    def stream_completion(
+        self,
+        args: ProviderCompletionArgs,
+    ) -> AsyncIterator[CompletionChunk]:
+        return _mock_stream(args)
+
+    async def recognize_text(self, args: VisionArgs) -> VisionResult:
+        # Model id is annotated ``" (mock)"`` so any caller logging it
+        # can see at a glance that no real upstream was hit. The
+        # placeholder string itself is intentionally bracketed so a
+        # downstream UI can detect and badge it if desired.
+        return VisionResult(text=MOCK_OCR_TEXT, model=f"{args.model} (mock)")
+
+    async def aclose(self) -> None:
+        """Mock holds no resources — no-op."""
+        return None
+
+
+mock_provider: CompletionProvider = MockProvider()

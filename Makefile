@@ -9,7 +9,7 @@
 # pnpm script, or runs both halves in sequence when the command is
 # inherently cross-cutting.
 
-.PHONY: help install dev backend frontend extension build lint typecheck test check clean
+.PHONY: help install dev backend frontend extension build lint typecheck test check check-config clean
 
 help:
 	@echo "Inkwell — common commands:"
@@ -24,6 +24,7 @@ help:
 	@echo "  make typecheck   mypy + tsc"
 	@echo "  make test        pytest"
 	@echo "  make check       lint + typecheck + test (everything CI runs)"
+	@echo "  make check-config drift-check the bundled model catalog (backend ↔ frontend)"
 	@echo "  make clean       remove caches + .venv + node_modules"
 	@echo ""
 	@echo "  cd backend && make help        for backend-only targets"
@@ -65,8 +66,16 @@ typecheck:
 test:
 	$(MAKE) -C backend test
 
-check: lint typecheck test
+check: check-config lint typecheck test
 	cd frontend && pnpm --filter @inkwell/extension build
+
+# Drift check: the model catalog is owned by the backend JSON at
+# backend/src/inkwell_backend/config/models.catalog.json and copied
+# into the shared package's _generated/ tree by a prebuild script.
+# In CI we run this BEFORE typecheck to fail fast if a checkout
+# missed the copy step — saves debugging a confusing tsc error.
+check-config:
+	cd frontend && pnpm --filter @inkwell/shared check-config
 
 clean:
 	$(MAKE) -C backend clean

@@ -98,18 +98,26 @@ package that imports FastAPI.
 | [`src/inkwell_backend/services/prompt.py`](../../backend/src/inkwell_backend/services/prompt.py) | Strategy registry per action; wraps page context in `<UNTRUSTED_CONTEXT>`. |
 | [`src/inkwell_backend/services/sanitizer.py`](../../backend/src/inkwell_backend/services/sanitizer.py) | Strips role markers, caps length, flags injection payloads. |
 | [`src/inkwell_backend/services/audit.py`](../../backend/src/inkwell_backend/services/audit.py) | Metadata-only structured logging — propagates `X-Client-Request-Id` for end-to-end correlation; carries `via_portkey` dimension when a real upstream was hit. |
-| [`src/inkwell_backend/providers/openai_client.py`](../../backend/src/inkwell_backend/providers/openai_client.py) | Process-wide `AsyncOpenAI` singleton with explicit httpx timeouts; closed on graceful shutdown. Picks up Portkey overrides automatically when the toggle is on. |
-| [`src/inkwell_backend/providers/portkey.py`](../../backend/src/inkwell_backend/providers/portkey.py) | Portkey AI gateway helpers — base URL, header builder, per-request trace forwarding. Single place that knows about the gateway; vendor client factories call into it. |
-| [`src/inkwell_backend/providers/`](../../backend/src/inkwell_backend/providers/) | Provider abstraction — `CompletionProvider` Protocol (chat + vision + lifecycle), the OpenAI implementation (real + mock fallback), and a registry keyed by `ModelProvider`. The pipeline dispatches via `get_provider_for_model`. See [model-providers.md](../explanation/model-providers.md). |
+| [`src/inkwell_backend/providers/openai_client.py`](../../backend/src/inkwell_backend/providers/openai_client.py) | Single configuration point for the OpenAI SDK — direct or via Portkey. Process-wide `AsyncOpenAI` singleton, explicit httpx timeouts, per-request `x-portkey-trace-id` header. Closed on graceful shutdown. |
+| [`src/inkwell_backend/providers/`](../../backend/src/inkwell_backend/providers/) | Provider abstraction — `CompletionProvider` Protocol (chat + vision + lifecycle), the OpenAI adapter, a first-class `MockProvider`, and a registry keyed by `ModelProvider`. The registry routes to the mock provider when the real one isn't configured, so real adapters stay vendor-pure. See [model-providers.md](../explanation/model-providers.md). |
+| [`src/inkwell_backend/config/models.catalog.json`](../../backend/src/inkwell_backend/config/models.catalog.json) | Single source of truth for the model catalog. Read by the backend at startup; copied into the extension's bundled fallback at build time via `frontend/packages/shared/scripts/sync-config.mjs`. Drift checked by `make check-config`. |
 | [`src/inkwell_backend/domain/`](../../backend/src/inkwell_backend/domain/) | Pure types: actions, tones, models, languages, limits, prompts, errors, Pydantic schemas, SSE encoders. |
 
 ### Shared
 
-`frontend/packages/shared/src/` — zod schemas, the `chrome.runtime` message union,
-error codes, action/tone enums, the model catalog, the language catalog,
-and hard limits. Imported by the extension. The backend keeps an
-independent Python mirror in `backend/src/inkwell_backend/domain/`
-— keep both copies aligned when you add a model, language, or action.
+`frontend/packages/shared/src/` — zod schemas, the `chrome.runtime`
+message union, error codes, action/tone enums, the model-catalog
+**fallback** (loaded from a generated copy of the backend's
+`models.catalog.json`), the language catalog, and hard limits.
+Imported by the extension. The backend keeps an independent Python
+mirror of the **language and action** catalogs in
+`backend/src/inkwell_backend/domain/` — keep both copies aligned when
+you add a language or action. The model catalog is **not** duplicated:
+the backend JSON at
+[`config/models.catalog.json`](../../backend/src/inkwell_backend/config/models.catalog.json)
+is the only tracked copy; a build step syncs it into the shared
+package, and the extension fetches the live list from `/api/v1/models`
+at runtime.
 
 ## Request lifecycle (`POST /api/v1/complete`)
 

@@ -16,6 +16,11 @@ out/
 .ruff_cache/
 .pytest_cache/
 
+# Generated config copies — produced by packages/shared/scripts/sync-config.mjs
+# at build/typecheck time. The git-tracked source-of-truth file lives at
+# backend/src/inkwell_backend/config/models.catalog.json.
+**/_generated/
+
 # Env / secrets — never commit
 .env
 .env.local

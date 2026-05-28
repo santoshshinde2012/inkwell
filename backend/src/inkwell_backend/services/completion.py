@@ -254,9 +254,7 @@ async def _stream(input_: CompletionInput) -> AsyncIterator[bytes]:
         # Only meaningful when a real upstream was actually hit. The
         # mock branch never touches the network, so the dimension
         # would be misleading there.
-        via_portkey: bool | None = (
-            settings.portkey_enabled if settings.has_openai else None
-        )
+        via_portkey: bool | None = settings.portkey_enabled if settings.has_openai else None
 
         log_completion(
             CompletionLogEvent(

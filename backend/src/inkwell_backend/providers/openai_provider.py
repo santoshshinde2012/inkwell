@@ -1,24 +1,23 @@
 """OpenAI provider — chat completions + vision (OCR).
 
-This is the **single end-to-end wrapper** for all OpenAI traffic. Every
-other module talks to the provider abstraction (``CompletionProvider``)
-and is unaware which vendor is on the other end. To swap providers,
-write a sibling file (e.g. ``anthropic_provider.py``) implementing the
-same protocol and register it in ``providers/registry.py``.
+The single end-to-end wrapper for all OpenAI traffic. Every other
+module talks to the provider abstraction (:class:`CompletionProvider`)
+and is unaware which vendor is on the other end. Adding an integration
+(Anthropic, Google, …) is one new file implementing the same Protocol
+plus a one-line registry entry.
 
-When ``OPENAI_API_KEY`` is unset, both ``stream_completion`` and
-``recognize_text`` delegate to :mod:`mock_provider`. The real client
-lives in :mod:`openai_client` so chat + OCR share one pool and one
-timeout configuration.
+This module is **pure OpenAI** — it has no awareness of the mock
+fallback. The registry checks ``configured`` and routes to
+:mod:`mock_provider` when this provider lacks credentials, so the
+"is real upstream reachable?" decision lives in exactly one place
+(SRP).
 """
 
 from __future__ import annotations
 
-import logging
 from collections.abc import AsyncIterator
 
 from ..domain.limits import MAX_OCR_RESPONSE_TOKENS, MAX_RESPONSE_TOKENS
-from ..domain.models import ModelProvider
 from ..settings import get_settings
 from .base import (
     CompletionChunk,
@@ -28,17 +27,18 @@ from .base import (
     VisionArgs,
     VisionResult,
 )
-from .mock_provider import mock_recognize, mock_stream
-from .openai_client import aclose_all as _aclose_openai_clients
-from .openai_client import get_openai_client
-from .portkey import build_request_headers
+from .openai_client import (
+    aclose_all as _aclose_openai_clients,
+)
+from .openai_client import (
+    build_request_headers,
+    get_openai_client,
+)
 
-_logger = logging.getLogger(__name__)
-
-# Temperature for OCR. Zero so the model doesn't paraphrase or hallucinate
-# text that isn't in the image. Kept module-local because it's an OpenAI-
-# specific tuning knob — a different vendor's vision API may not expose
-# temperature at all.
+# Temperature for OCR. Zero so the model doesn't paraphrase or
+# hallucinate text that isn't in the image. Kept module-local because
+# it's an OpenAI-specific tuning knob — a different vendor's vision
+# API may not expose temperature at all.
 _OCR_TEMPERATURE: float = 0.0
 
 
@@ -47,9 +47,7 @@ _OCR_TEMPERATURE: float = 0.0
 # ---------------------------------------------------------------------------
 
 
-async def _real_stream(
-    args: ProviderCompletionArgs,
-) -> AsyncIterator[CompletionChunk]:
+async def _stream(args: ProviderCompletionArgs) -> AsyncIterator[CompletionChunk]:
     """Stream a chat completion through the OpenAI async SDK."""
     client = get_openai_client()
 
@@ -96,7 +94,7 @@ async def _real_stream(
 # ---------------------------------------------------------------------------
 
 
-async def _real_recognize(args: VisionArgs) -> VisionResult:
+async def _recognize(args: VisionArgs) -> VisionResult:
     """Send an image to OpenAI's vision-capable chat model and return
     the extracted text.
 
@@ -129,7 +127,7 @@ async def _real_recognize(args: VisionArgs) -> VisionResult:
                 ],
             },
         ],
-        # See ``_real_stream`` for the rationale.
+        # See ``_stream`` for the rationale.
         extra_headers=build_request_headers(args.trace_id),
     )
 
@@ -146,27 +144,26 @@ async def _real_recognize(args: VisionArgs) -> VisionResult:
 class OpenAiProvider:
     """Concrete :class:`CompletionProvider` for OpenAI.
 
-    Both methods short-circuit to the mock provider when no key is
-    configured, so the rest of the app sees identical behaviour
-    whether or not credentials are present.
+    Pure adapter — knows nothing about the mock fallback. The registry
+    selects the mock provider instead of this one when ``configured``
+    reports False, so this class can stay focused on the OpenAI SDK
+    call shape.
     """
-
-    id: ModelProvider = ModelProvider.OPENAI
 
     @property
     def configured(self) -> bool:
+        """True when an OpenAI upstream is reachable — directly with
+        a vendor key, or via Portkey (virtual key or forwarded key)."""
         return bool(get_settings().has_openai)
 
     def stream_completion(
         self,
         args: ProviderCompletionArgs,
     ) -> AsyncIterator[CompletionChunk]:
-        return _real_stream(args) if self.configured else mock_stream(args)
+        return _stream(args)
 
     async def recognize_text(self, args: VisionArgs) -> VisionResult:
-        if not self.configured:
-            return await mock_recognize(args)
-        return await _real_recognize(args)
+        return await _recognize(args)
 
     async def aclose(self) -> None:
         await _aclose_openai_clients()

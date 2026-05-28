@@ -39,13 +39,28 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
       hook stays vendor-neutral.
     """
     settings: Settings = app.state.settings
+
+    # Surface the active upstream transport in one clear log line so an
+    # operator can confirm at a glance whether traffic is hitting OpenAI
+    # directly, going through the Portkey gateway, or falling back to
+    # the deterministic mock (no credentials configured). The detailed
+    # fields below are the source of truth for downstream log parsers.
+    if not settings.has_openai:
+        transport = "mock (no upstream credentials configured)"
+    elif settings.portkey_enabled:
+        transport = f"portkey-gateway ({settings.portkey_base_url})"
+    else:
+        transport = "openai-direct (api.openai.com)"
+
     _logger.info(
-        "inkwell-backend ready",
+        "inkwell-backend ready: %s",
+        transport,
         extra={
             "version": __version__,
             "environment": settings.environment,
             "has_openai": settings.has_openai,
             "portkey_enabled": settings.portkey_enabled,
+            "transport": transport,
         },
     )
     mark_ready()

@@ -1,24 +1,32 @@
-"""Process-wide ``AsyncOpenAI`` client factory.
+"""Single configuration point for the OpenAI SDK — direct or via Portkey.
 
-The SDK's ``AsyncOpenAI`` is concurrency-safe and pools its own httpx
-connections — but only across a *single* instance. Constructing one
-per request (the original pattern) gave up that pooling and paid for
-TLS handshakes on every call. This module exposes a lazily-created
-singleton so callers get a shared client without each having to know
-how to wire it.
+The Portkey gateway is OpenAI-SDK-compatible by design: integration is
+purely a transport concern (base URL + a few headers), so we keep
+using ``AsyncOpenAI`` and only swap how it's constructed. Both modes
+go through one factory:
 
-The Portkey toggle is applied here: when ``settings.use_portkey`` is
-True, the SDK is pointed at the gateway URL and given the
-``x-portkey-*`` headers. From every caller's perspective the client
-behaves identically — chat completions and vision both flow through
-the same SDK methods.
+.. code-block:: python
 
-Why the lazy import:
+    # USE_PORTKEY=false → direct OpenAI
+    AsyncOpenAI(api_key=OPENAI_API_KEY, timeout=...)
 
-* The SDK pulls in httpx + a non-trivial chunk of code we don't want
-  on the import path of mock-only deployments. Importing ``openai``
-  the first time someone *calls* :func:`get_openai_client` keeps the
-  cold-start fast when no key is configured.
+    # USE_PORTKEY=true → Portkey gateway
+    AsyncOpenAI(
+        api_key=<placeholder or vendor key>,
+        base_url=PORTKEY_GATEWAY_URL,
+        default_headers=createHeaders(api_key=PORTKEY_API_KEY, ...),
+        timeout=...,
+    )
+
+This file is the *only* place that knows about Portkey. Other modules
+call :func:`get_openai_client` and :func:`build_request_headers` and
+remain mode-agnostic.
+
+Why the lazy imports of ``openai`` and ``portkey_ai``:
+
+* Both pull in non-trivial code we don't want on the import path of
+  mock-only deployments. Importing them when someone *calls* the
+  factory keeps the cold start fast when no credentials are configured.
 
 Why explicit timeouts:
 
@@ -27,23 +35,42 @@ Why explicit timeouts:
   We override to a connection-aware ``httpx.Timeout`` so the
   ``async for chunk in stream`` loop can fail in a bounded time and
   the caller can yield an SSE ``error`` event.
+
+Why the singleton cache:
+
+* ``AsyncOpenAI`` is concurrency-safe and pools its own httpx
+  connections — but only across a *single* instance. Constructing one
+  per request gives up the pooling and pays for TLS handshakes on
+  every call. The cache is keyed on every input that affects the wire
+  shape (api_key, base_url, headers) so a credential rotation or
+  toggle flip cannot serve a stale client.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any
 
 from ..settings import get_settings
-from .portkey import build_client_overrides
 
 if TYPE_CHECKING:
     from openai import AsyncOpenAI
 
-# Portkey-side provider slug — passed in the ``x-portkey-provider``
-# header so the gateway knows which upstream to route to. Constant
-# because this file only constructs OpenAI clients; the slug changes
-# per-vendor and is the caller's responsibility for any future provider.
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+# Portkey-side provider slug. Sent in the ``x-portkey-provider`` header
+# so the gateway knows which upstream to route to. Constant here because
+# this file only constructs OpenAI clients; a future Anthropic adapter
+# would carry its own slug.
 _PORTKEY_PROVIDER_SLUG: str = "openai"
+
+# Placeholder ``api_key`` handed to the SDK when authentication happens
+# via a Portkey virtual key — the OpenAI SDK refuses an empty key, and
+# the gateway strips this Authorization header before forwarding. Using
+# a clearly fake value here so it shows up in logs if it ever leaks.
+_VIRTUAL_KEY_PLACEHOLDER: str = "PORTKEY_VIRTUAL_KEY_PLACEHOLDER"
 
 # Total request budget. SSE streams hold the connection open for the
 # duration of the generation; for token streaming we want a fairly
@@ -54,20 +81,65 @@ _READ_TIMEOUT_S = 60.0
 _WRITE_TIMEOUT_S = 10.0
 _POOL_TIMEOUT_S = 5.0
 
-# Cached client keyed by a tuple capturing every input that changes the
-# wire shape — api_key, gateway base URL, and the frozenset of Portkey
-# headers. Tests that toggle Portkey on/off don't poison the cache,
-# and the keying survives credential rotation in long-running processes.
+# Cached client keyed by every input that changes the wire shape —
+# api_key, base URL, and the frozenset of Portkey headers. Tests that
+# toggle the gateway on/off don't poison the cache, and the keying
+# survives credential rotation in long-running processes.
 _ClientKey = tuple[str | None, str | None, frozenset[tuple[str, str]]]
 _clients: dict[_ClientKey, AsyncOpenAI] = {}
 
 
-def _cache_key(
-    api_key: str | None,
-    base_url: str | None,
-    headers: dict[str, str],
-) -> _ClientKey:
-    return (api_key, base_url, frozenset(headers.items()))
+# ---------------------------------------------------------------------------
+# Portkey overrides — private; only used when settings.portkey_enabled
+# ---------------------------------------------------------------------------
+
+
+def _portkey_overrides(vendor_api_key: str | None) -> tuple[str, str, Mapping[str, str]] | None:
+    """Return ``(api_key, base_url, headers)`` for the Portkey path, or
+    ``None`` when the gateway is disabled.
+
+    The settings layer's cross-field validator guarantees that when
+    ``portkey_enabled`` is True, ``portkey_api_key`` is populated —
+    callers don't need to defend against that case.
+
+    The lazy import of ``portkey_ai`` keeps cold-start fast for
+    deployments that don't use the gateway.
+    """
+    settings = get_settings()
+    if not settings.portkey_enabled:
+        return None
+
+    # Lazy import — see module docstring.
+    from portkey_ai import createHeaders
+
+    # ``createHeaders`` accepts only keyword arguments and skips entries
+    # whose value is None, so we can pass every optional field directly.
+    # The SDK ships without type stubs for this helper — silence the
+    # untyped-call warning rather than wrap the whole module.
+    headers: Mapping[str, str] = createHeaders(  # type: ignore[no-untyped-call]
+        api_key=settings.portkey_api_key,
+        provider=_PORTKEY_PROVIDER_SLUG,
+        virtual_key=settings.portkey_virtual_key,
+        config=settings.portkey_config,
+    )
+
+    if settings.portkey_virtual_key:
+        # The vault provides the upstream credential; the SDK still
+        # demands a non-empty api_key, so feed it a placeholder.
+        api_key = _VIRTUAL_KEY_PLACEHOLDER
+    else:
+        # Forward the vendor's own key through the gateway. Falling back
+        # to the placeholder when no key is set lets the SDK construct
+        # without raising; the upstream call will fail with a clear 401
+        # from Portkey, which is the right surfacing.
+        api_key = (vendor_api_key or "").strip() or _VIRTUAL_KEY_PLACEHOLDER
+
+    return api_key, settings.portkey_base_url, headers
+
+
+# ---------------------------------------------------------------------------
+# Public — client factory + per-request trace header
+# ---------------------------------------------------------------------------
 
 
 def get_openai_client() -> AsyncOpenAI:
@@ -78,31 +150,25 @@ def get_openai_client() -> AsyncOpenAI:
     construction during a race just loses one client object to garbage
     collection.
 
-    Picks up Portkey overrides automatically; callers don't need to
-    know which mode they're running in.
+    Picks up Portkey overrides automatically; callers don't need to know
+    which mode they're running in.
     """
     settings = get_settings()
-
-    overrides = build_client_overrides(
-        _PORTKEY_PROVIDER_SLUG,
-        vendor_api_key=settings.openai_api_key,
-    )
+    overrides = _portkey_overrides(vendor_api_key=settings.openai_api_key)
 
     if overrides is None:
         api_key: str | None = settings.openai_api_key
         base_url: str | None = None
-        headers: dict[str, str] = {}
+        headers: Mapping[str, str] = {}
     else:
-        api_key = overrides.api_key
-        base_url = overrides.base_url
-        headers = dict(overrides.default_headers)
+        api_key, base_url, headers = overrides
 
-    key = _cache_key(api_key, base_url, headers)
-    existing = _clients.get(key)
+    cache_key: _ClientKey = (api_key, base_url, frozenset(headers.items()))
+    existing = _clients.get(cache_key)
     if existing is not None:
         return existing
 
-    # Lazy import — see module docstring for why.
+    # Lazy imports — see module docstring.
     import httpx
     from openai import AsyncOpenAI
 
@@ -114,29 +180,47 @@ def get_openai_client() -> AsyncOpenAI:
         pool=_POOL_TIMEOUT_S,
     )
 
-    # Two explicit branches keep mypy strict happy without resorting to
-    # **kwargs unpacking (which loses the per-arg types). The Portkey
-    # branch sets every override at once; the default branch lets the
-    # SDK pick its own ``base_url`` and ships no extra headers.
+    # Single SDK call, varying kwargs. ``base_url`` and
+    # ``default_headers`` are only sent when the Portkey overrides
+    # populated them — omitting them entirely lets the SDK pick its own
+    # defaults (``https://api.openai.com/v1`` and no extra headers).
+    kwargs: dict[str, Any] = {"api_key": api_key, "timeout": timeout}
     if base_url is not None:
-        client = AsyncOpenAI(
-            api_key=api_key,
-            base_url=base_url,
-            default_headers=headers,
-            timeout=timeout,
-        )
-    else:
-        client = AsyncOpenAI(api_key=api_key, timeout=timeout)
+        kwargs["base_url"] = base_url
+    if headers:
+        kwargs["default_headers"] = dict(headers)
 
-    _clients[key] = client
+    client = AsyncOpenAI(**kwargs)
+    _clients[cache_key] = client
     return client
+
+
+def build_request_headers(trace_id: str | None) -> dict[str, str] | None:
+    """Return per-request ``extra_headers`` for the SDK, or ``None`` when
+    nothing needs adding.
+
+    Today this only forwards the client-supplied request id as Portkey's
+    ``x-portkey-trace-id`` — the canonical way to correlate our audit
+    log lines with the gateway's request log. Skipped when Portkey is
+    disabled (the header would be ignored upstream) or when no trace id
+    is available (the gateway will mint its own).
+
+    The OpenAI SDK accepts ``extra_headers`` on every API call and
+    merges them on top of the client's ``default_headers``; this helper
+    only emits the per-request headers, leaving the static ones
+    (``x-portkey-api-key`` etc.) on the client.
+    """
+    if not trace_id:
+        return None
+    if not get_settings().portkey_enabled:
+        return None
+    return {"x-portkey-trace-id": trace_id}
 
 
 async def aclose_all() -> None:
     """Close every cached client. Called from the FastAPI lifespan
-    shutdown hook via the provider registry so a graceful SIGTERM frees
-    upstream connections. Safe to call when no clients have been
-    created."""
+    shutdown hook so a graceful SIGTERM frees upstream connections.
+    Safe to call when no clients have been created."""
     while _clients:
         _, client = _clients.popitem()
         await client.close()

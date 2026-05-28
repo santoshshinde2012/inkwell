@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://inkwell.local/schemas/models.catalog.schema.json",
+  "title": "Inkwell model catalog",
+  "description": "Single source of truth for which models the product supports. Read by the backend at startup and (via a build-time copy) embedded into the extension's bundled fallback. Adding a model is a pure data change here plus a matching provider implementation in backend/src/inkwell_backend/providers/.",
+  "type": "object",
+  "required": ["default", "models"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "default": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Model id used when a client does not specify one. Must match one of the entries in `models`."
+    },
+    "models": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Ordered list. First entry is the product default if `default` is absent.",
+      "items": {
+        "type": "object",
+        "required": ["id", "label", "provider", "description", "tier"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "description": "Stable id sent in API requests and stored in extension settings."
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "description": "Human-readable name shown in the picker."
+          },
+          "provider": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Upstream that serves this model. Must match a registered ModelProvider on the backend."
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 300,
+            "description": "One-line blurb shown under the label in the picker."
+          },
+          "tier": {
+            "type": "string",
+            "enum": ["fast", "balanced", "quality"],
+            "description": "Coarse speed/quality bucket — lets the UI sort/group sensibly."
+          }
+        }
+      }
+    }
+  }
+}
