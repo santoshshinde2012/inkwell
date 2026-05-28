@@ -1,10 +1,15 @@
 import { z } from "zod";
 import { ACTIONS } from "./actions";
 import { TONE_PRESETS } from "./tones";
-import { MODEL_IDS } from "./models";
 import { LANGUAGE_IDS, SOURCE_LANGUAGE_IDS } from "./languages";
 import { LIMITS } from "./constants";
 import { ERROR_CODES } from "./errors";
+
+// Model ids are an open set sourced from the backend's /api/v1/models
+// catalog — see ModelCatalogResponse in ./models. Validation here is
+// shape-only (string, sane length); the backend re-validates against
+// its live catalog before dispatching to a provider.
+const ModelIdField = z.string().min(1).max(120);
 
 // ---------------------------------------------------------------------------
 // /api/v1/complete  (Edge, streaming SSE)
@@ -69,7 +74,7 @@ export const CompleteRequestSchema = z
     context: ContextSchema,
     tone: z.enum(TONE_PRESETS).optional(),
     instruction: z.string().max(LIMITS.MAX_INSTRUCTION_CHARS).optional(),
-    model: z.enum(MODEL_IDS).optional(),
+    model: ModelIdField.optional(),
     // Language controls (see ./languages).
     //   sourceLanguage — the language of the input. "auto" (or omitted)
     //     lets the model detect it; a concrete id is treated as a hint.
@@ -154,7 +159,7 @@ export const LocalSettingsSchema = z
     displayName: z.string().max(120),
     aboutMe: z.string().max(2000),
     defaultTone: z.enum(TONE_PRESETS),
-    defaultModel: z.enum(MODEL_IDS),
+    defaultModel: ModelIdField,
     // Multilingual preferences. `workingLanguage` is the agent's preferred
     // language for drafting and the second language in bilingual replies;
     // `frequentLanguages` are surfaced first in the popover's language

@@ -17,8 +17,8 @@ import { useEffect, useId, useMemo, useRef, type ReactNode } from "react";
 import {
   Action,
   LANGUAGE_CATALOG,
-  MODEL_CATALOG,
   ModelId,
+  type RemoteModelInfo,
   SourceLanguage,
   TONE_PRESETS,
   TONE_PRESET_LABELS,
@@ -26,6 +26,7 @@ import {
   languageDisplayName,
 } from "@inkwell/shared";
 import type { TargetChoice } from "../lib/ui-state";
+import { useModelCatalog } from "../lib/useModelCatalog";
 import { ArrowRightIcon, SlidersIcon, XIcon } from "./icons";
 
 const MAX_INSTRUCTION = 1000;
@@ -72,6 +73,10 @@ export function OptionsSheet({
 }: OptionsSheetProps): JSX.Element {
   const sheetRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
+  // Catalog comes from the cached `/api/v1/models` response (see
+  // lib/models.ts). The sheet is short-lived so we don't trigger a
+  // refresh — the persistent background worker is responsible for that.
+  const { catalog } = useModelCatalog();
 
   // Auto-focus the first interactive element and trap Tab inside the sheet.
   useEffect(() => {
@@ -170,10 +175,16 @@ export function OptionsSheet({
                 onTone={onTone}
                 model={model}
                 onModel={onModel}
+                models={catalog.models}
                 disabled={disabled}
               />
             ) : (
-              <ModelOnlyRow model={model} onModel={onModel} disabled={disabled} />
+              <ModelOnlyRow
+                model={model}
+                onModel={onModel}
+                models={catalog.models}
+                disabled={disabled}
+              />
             )}
             <InstructionInput
               placeholder={INSTRUCTION_PLACEHOLDERS[action]}
@@ -312,12 +323,14 @@ function SettingsRow({
   onTone,
   model,
   onModel,
+  models,
   disabled,
 }: {
   tone: TonePreset;
   onTone: (v: TonePreset) => void;
   model: ModelId;
   onModel: (v: ModelId) => void;
+  models: readonly RemoteModelInfo[];
   disabled: boolean;
 }): JSX.Element {
   return (
@@ -340,7 +353,7 @@ function SettingsRow({
         onChange={(v) => onModel(v as ModelId)}
         disabled={disabled}
       >
-        {MODEL_CATALOG.map((m) => (
+        {models.map((m) => (
           <option key={m.id} value={m.id} title={m.description}>
             {m.label}
           </option>
@@ -353,10 +366,12 @@ function SettingsRow({
 function ModelOnlyRow({
   model,
   onModel,
+  models,
   disabled,
 }: {
   model: ModelId;
   onModel: (v: ModelId) => void;
+  models: readonly RemoteModelInfo[];
   disabled: boolean;
 }): JSX.Element {
   return (
@@ -366,7 +381,7 @@ function ModelOnlyRow({
       onChange={(v) => onModel(v as ModelId)}
       disabled={disabled}
     >
-      {MODEL_CATALOG.map((m) => (
+      {models.map((m) => (
         <option key={m.id} value={m.id} title={m.description}>
           {m.label}
         </option>
@@ -459,16 +474,21 @@ export function useOptionsSummary({
   model: ModelId;
   instruction: string;
 }): string {
+  const { catalog } = useModelCatalog();
+  const modelLabel = useMemo(
+    () => catalog.models.find((m) => m.id === model)?.label,
+    [catalog, model],
+  );
   return useMemo(() => {
     return summarise({
       action,
       sourceLang,
       targetChoice,
       tone,
-      model,
+      modelLabel,
       instruction,
     });
-  }, [action, sourceLang, targetChoice, tone, model, instruction]);
+  }, [action, sourceLang, targetChoice, tone, modelLabel, instruction]);
 }
 
 function summarise({
@@ -476,14 +496,14 @@ function summarise({
   sourceLang,
   targetChoice,
   tone,
-  model,
+  modelLabel,
   instruction,
 }: {
   action: Action;
   sourceLang: SourceLanguage;
   targetChoice: TargetChoice;
   tone: TonePreset;
-  model: ModelId;
+  modelLabel: string | undefined;
   instruction: string;
 }): string {
   const parts: string[] = [];
@@ -499,8 +519,7 @@ function summarise({
     parts.push(`${srcShown} → ${tgtShown}`);
   }
   if (action !== "translate") parts.push(TONE_PRESET_LABELS[tone]);
-  const m = MODEL_CATALOG.find((x) => x.id === model);
-  if (m) parts.push(m.label);
+  if (modelLabel) parts.push(modelLabel);
   if (instruction.trim()) parts.push("custom note");
   return parts.join(" · ");
 }

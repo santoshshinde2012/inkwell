@@ -97,6 +97,10 @@ export const buildManifest = (backendUrl: string) => {
       // right-clicked images. Click handler lives in the background worker
       // (src/background/index.ts) and routes the image into the side panel.
       "contextMenus",
+      // alarms drives the periodic refresh of the model catalog from
+      // /api/v1/models — see src/lib/models.ts. Without it the cache
+      // would only refresh on browser startup or backend-URL change.
+      "alarms",
     ],
 
     host_permissions: [

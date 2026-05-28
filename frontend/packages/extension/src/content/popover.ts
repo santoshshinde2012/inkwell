@@ -26,7 +26,6 @@ import {
   TONE_PRESETS,
   TONE_PRESET_LABELS,
   ModelId,
-  MODEL_CATALOG,
   DEFAULT_MODEL_ID,
   MESSAGE_TYPES,
   CompleteStartMessage,
@@ -43,11 +42,13 @@ import {
   isLanguageId,
   languageDisplayName,
   languageLabel,
+  type RemoteModelInfo,
 } from "@inkwell/shared";
 import { ExtensionContextInvalidatedError, sendToBackground } from "../lib/messaging";
 import { localStore } from "../lib/storage";
 import { detectLanguage } from "../lib/languages";
 import { historyStore, type NewHistoryEntry } from "../lib/history";
+import { loadModelCatalog } from "../lib/models";
 import { makeUuid } from "../lib/uuid";
 import { writeText } from "./editable";
 import type { SiteAdapter } from "./adapters";
@@ -199,11 +200,16 @@ export const mountPopover = async ({
   // collapsed disclosure — with no flicker on first frame. The combined
   // chrome.storage.local round-trip resolves in a handful of milliseconds,
   // fast enough to keep the open feeling instant.
-  const [initialOptsExpanded, lastUsed, settings] = await Promise.all([
+  const [initialOptsExpanded, lastUsed, settings, modelCatalog] = await Promise.all([
     loadOptsExpanded(),
     loadLastUsed(),
     localStore.getAll().catch(() => null),
+    // Read from the cache only — content scripts run in arbitrary
+    // page origins and can't be trusted to call the backend. The
+    // background worker keeps the cache fresh on its own schedule.
+    loadModelCatalog(),
   ]);
+  const modelOptions: readonly RemoteModelInfo[] = modelCatalog.models;
 
   // field mode inserts the result back; selection/blank are copy-only.
   const canInsert = source.kind === "field";
@@ -211,13 +217,24 @@ export const mountPopover = async ({
   // Resolve initial values with precedence:
   //   validated lastUsed > options-page default > built-in default.
   const defaultTone: TonePreset = settings?.defaultTone ?? TONE_PRESETS[0]!;
-  const defaultModel: ModelId = settings?.defaultModel ?? DEFAULT_MODEL_ID;
+  // Pick the user's default if still present in the live catalog; otherwise
+  // fall back to whatever the backend reports as default; finally the
+  // bundled DEFAULT_MODEL_ID. Keeps the picker functional after a model
+  // is retired upstream.
+  const knownIds = new Set(modelOptions.map((m) => m.id));
+  const defaultModel: ModelId =
+    settings?.defaultModel && knownIds.has(settings.defaultModel)
+      ? settings.defaultModel
+      : (modelCatalog.default ?? DEFAULT_MODEL_ID);
   const workingLanguage: LanguageId = settings?.workingLanguage ?? DEFAULT_WORKING_LANGUAGE;
   const frequentLanguages: LanguageId[] = settings?.frequentLanguages ?? [];
 
   const initialAction: Action = isValidAction(lastUsed.action) ? lastUsed.action : "reply";
   const initialTone: TonePreset = isValidTone(lastUsed.tone) ? lastUsed.tone : defaultTone;
-  const initialModel: ModelId = isValidModel(lastUsed.model) ? lastUsed.model : defaultModel;
+  // `lastUsed.model` only counts when it exists in the live catalog —
+  // an id retired upstream shouldn't keep getting sent.
+  const initialModel: ModelId =
+    isValidModel(lastUsed.model) && knownIds.has(lastUsed.model) ? lastUsed.model : defaultModel;
   const initialSourceLang: SourceLanguage = isValidSourceLang(lastUsed.sourceLang)
     ? lastUsed.sourceLang
     : "auto";
@@ -412,7 +429,7 @@ export const mountPopover = async ({
   modelSelect.className = "lang-select";
   modelSelect.id = "inkwell-model-select";
   modelSelect.setAttribute("aria-label", "Model");
-  for (const m of MODEL_CATALOG) {
+  for (const m of modelOptions) {
     const opt = document.createElement("option");
     opt.value = m.id;
     opt.textContent = m.label;
@@ -781,7 +798,7 @@ export const mountPopover = async ({
     if (state.action !== "translate") {
       parts.push(TONE_PRESET_LABELS[state.tone]);
     }
-    const m = MODEL_CATALOG.find((x) => x.id === state.model);
+    const m = modelOptions.find((x) => x.id === state.model);
     if (m) parts.push(m.label);
     if (state.instruction.trim()) parts.push("custom note");
 
@@ -874,8 +891,9 @@ export const mountPopover = async ({
     saveLastUsed(state);
   });
   modelSelect.addEventListener("change", () => {
-    // The <option> values come straight from MODEL_CATALOG, so the value is
-    // always a valid ModelId.
+    // The <option> values come straight from the live catalog
+    // (modelOptions, sourced from /api/v1/models), so the value is a
+    // backend-recognised model id at the time the popover opened.
     state.model = modelSelect.value as ModelId;
     renderOptionsToggle();
     saveLastUsed(state);

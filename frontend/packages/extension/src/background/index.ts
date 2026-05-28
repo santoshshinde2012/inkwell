@@ -21,6 +21,7 @@ import {
 import { cancelStream, handleCompleteStream, type ResponseTarget } from "./api-client";
 import { evaluateSite } from "../lib/site-policy";
 import { localStore } from "../lib/storage";
+import { clearModelCatalogCache, refreshModelCatalog } from "../lib/models";
 import { stashHandoff } from "../lib/ui-state";
 
 // Make the toolbar action open the Side Panel rather than a popup. The
@@ -41,6 +42,28 @@ try {
 // ID of the right-click "Extract text" entry on page images. Pulled out
 // so the install + click handlers reference the same constant.
 const OCR_MENU_ID = "inkwell-ocr-image";
+
+// chrome.alarms name for the periodic model-catalog refresh. Six hours
+// is a deliberate compromise: short enough that a model added on the
+// backend appears the same workday, long enough that a busy user
+// doesn't see repeated network traffic for an endpoint that rarely
+// changes. The user can force-refresh by reloading the extension or by
+// changing the backend URL (both wired below).
+const MODEL_CATALOG_ALARM = "inkwell.refreshModelCatalog";
+const MODEL_CATALOG_REFRESH_HOURS = 6;
+const SETTINGS_BACKEND_URL_KEY = "settings.backendUrl";
+
+/** Pull the current backend config out of storage and refresh the
+ *  model catalog against it. Best-effort: failures are swallowed so a
+ *  flaky network doesn't surface as an "uncaught (in promise)" log. */
+const refreshModelsFromStorage = async (): Promise<void> => {
+  try {
+    const s = await localStore.getAll();
+    await refreshModelCatalog(s.backendUrl, s.apiKey || undefined);
+  } catch {
+    /* non-fatal — UI surfaces fall back to the cached / bundled list */
+  }
+};
 
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === "install" && !__DEV__) {
@@ -64,6 +87,43 @@ chrome.runtime.onInstalled.addListener((details) => {
   } catch {
     /* same */
   }
+
+  // Seed the model catalog cache + schedule the periodic refresh.
+  // Runs on install AND update so a re-built extension picks up any
+  // new backend-side models on the very first request after reload.
+  void refreshModelsFromStorage();
+  try {
+    chrome.alarms?.create(MODEL_CATALOG_ALARM, {
+      periodInMinutes: MODEL_CATALOG_REFRESH_HOURS * 60,
+    });
+  } catch {
+    /* alarms unavailable — startup refresh still covers most cases */
+  }
+});
+
+// Browser-startup refresh — keeps the cache warm across browser
+// restarts (the service worker also dies between sessions, so the
+// alarm is the only thing that fires while Chrome is closed).
+chrome.runtime.onStartup?.addListener(() => {
+  void refreshModelsFromStorage();
+});
+
+chrome.alarms?.onAlarm.addListener((alarm) => {
+  if (alarm.name === MODEL_CATALOG_ALARM) {
+    void refreshModelsFromStorage();
+  }
+});
+
+// React to a backend URL change immediately: drop the stale cache so
+// the next render falls back to the bundled list, then re-fetch from
+// the new backend.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local") return;
+  if (!(SETTINGS_BACKEND_URL_KEY in changes)) return;
+  void (async () => {
+    await clearModelCatalogCache();
+    await refreshModelsFromStorage();
+  })();
 });
 
 chrome.commands.onCommand.addListener(async (command) => {

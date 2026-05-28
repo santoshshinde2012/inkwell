@@ -14,7 +14,6 @@ import {
   Action,
   LanguageId,
   ModelId,
-  MODEL_CATALOG,
   SourceLanguage,
   TONE_PRESETS,
   TonePreset,
@@ -105,8 +104,11 @@ export const isValidAction = (v: unknown): v is Action =>
   v === "reply" || v === "translate" || v === "grammar" || v === "rewrite";
 export const isValidTone = (v: unknown): v is TonePreset =>
   typeof v === "string" && (TONE_PRESETS as readonly string[]).includes(v);
+// Permissive check — the catalog is fetched from the backend, so we
+// can't enumerate valid ids at this layer. The picker validates the
+// chosen id against the current catalog when rendering.
 export const isValidModel = (v: unknown): v is ModelId =>
-  typeof v === "string" && MODEL_CATALOG.some((m) => m.id === v);
+  typeof v === "string" && v.length > 0 && v.length <= 120;
 export const isValidSourceLang = (v: unknown): v is SourceLanguage =>
   v === "auto" || (typeof v === "string" && isLanguageId(v));
 export const isValidTargetChoice = (v: unknown): v is TargetChoice =>

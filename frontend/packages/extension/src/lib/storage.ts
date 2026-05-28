@@ -24,9 +24,15 @@ import {
   LocalSettings,
   TONE_PRESETS,
   isLanguageId,
-  isModelId,
   type LanguageId,
 } from "@inkwell/shared";
+
+// Permissive check: any non-empty, sanely-sized string is acceptable as a
+// stored model id. The catalog is the backend's responsibility now (see
+// lib/models.ts) and we can't enumerate valid ids at the storage layer.
+// Sane upper bound matches the wire-side ModelIdField in @inkwell/shared.
+const isStorableModelId = (v: unknown): v is string =>
+  typeof v === "string" && v.length > 0 && v.length <= 120;
 
 // The build-time default backend — used until the user configures their own.
 const DEFAULT_BACKEND_URL = __BACKEND_URL__;
@@ -103,9 +109,11 @@ export const localStore = {
       defaultTone: (TONE_PRESETS as readonly string[]).includes(tone)
         ? (tone as LocalSettings["defaultTone"])
         : DEFAULTS.defaultTone,
-      // Tolerate a stale id from an older version: fall back to the default
-      // when the stored model is no longer in the catalog.
-      defaultModel: isModelId(model) ? model : DEFAULTS.defaultModel,
+      // The model catalog is fetched at runtime from the backend, so we
+      // can't gate the stored id against a fixed list here. Accept any
+      // non-empty string; the picker will fall back to the default if
+      // the id has been retired upstream.
+      defaultModel: isStorableModelId(model) ? model : DEFAULTS.defaultModel,
       workingLanguage: isLanguageId(r[KEYS.workingLanguage])
         ? r[KEYS.workingLanguage]
         : DEFAULTS.workingLanguage,

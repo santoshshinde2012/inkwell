@@ -17,11 +17,16 @@
     "dist"
   ],
   "scripts": {
+    "sync-config": "node scripts/sync-config.mjs",
+    "check-config": "node scripts/sync-config.mjs --check",
+    "prebuild": "pnpm sync-config",
     "build": "tsc -p tsconfig.json",
+    "predev": "pnpm sync-config",
     "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
+    "pretypecheck": "pnpm sync-config",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist src/_generated"
   },
   "dependencies": {
     "zod": "^3.23.8"

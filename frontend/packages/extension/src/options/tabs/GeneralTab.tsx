@@ -3,19 +3,19 @@
 // Composed by ./index.ts and routed to from options/App.tsx.
 
 import { useState, type JSX } from "react";
-import {
-  MODEL_CATALOG,
-  TONE_PRESETS,
-  TONE_PRESET_LABELS,
-  type ModelId,
-  type TonePreset,
-} from "@inkwell/shared";
+import { TONE_PRESETS, TONE_PRESET_LABELS, type TonePreset } from "@inkwell/shared";
 import { localStore } from "../../lib/storage";
+import { useModelCatalog } from "../../lib/useModelCatalog";
 import { Card, KBD_SHORTCUT, type TabProps } from "../components";
 
 export function GeneralTab({ settings, patch, flash }: TabProps): JSX.Element {
   const [displayName, setDisplayName] = useState(settings.displayName);
   const [aboutMe, setAboutMe] = useState(settings.aboutMe);
+
+  // Force a fresh fetch on mount — the options page is the most visible
+  // place for the model list, and a user opening it almost certainly
+  // wants to see what the backend currently exposes.
+  const { catalog } = useModelCatalog({ refreshOnMount: true });
 
   const dirty = displayName !== settings.displayName || aboutMe !== settings.aboutMe;
 
@@ -31,7 +31,7 @@ export function GeneralTab({ settings, patch, flash }: TabProps): JSX.Element {
     flash("Default tone saved");
   };
 
-  const changeModel = async (model: ModelId): Promise<void> => {
+  const changeModel = async (model: string): Promise<void> => {
     await localStore.setDefaultModel(model);
     patch({ defaultModel: model });
     flash("Default model saved");
@@ -111,7 +111,7 @@ export function GeneralTab({ settings, patch, flash }: TabProps): JSX.Element {
         description="Used unless you pick a different model in the popover for a specific request."
       >
         <div className="space-y-2">
-          {MODEL_CATALOG.map((m) => {
+          {catalog.models.map((m) => {
             const active = m.id === settings.defaultModel;
             return (
               <button

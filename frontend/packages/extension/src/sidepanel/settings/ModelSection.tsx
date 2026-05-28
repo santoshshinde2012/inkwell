@@ -6,13 +6,17 @@
 // name, and a `<select>` hides both.
 
 import type { JSX } from "react";
-import { MODEL_CATALOG, type ModelId } from "@inkwell/shared";
 import { localStore } from "../../lib/storage";
+import { useModelCatalog } from "../../lib/useModelCatalog";
 import { CheckIcon, CpuIcon } from "../icons";
 import { Section, type SectionProps } from "./Section";
 
 export function ModelSection({ settings, patch, flash }: SectionProps): JSX.Element {
-  const change = async (model: ModelId): Promise<void> => {
+  // The side panel's Settings view is a likely place to look right after
+  // changing the backend — refresh on mount so the picker is current.
+  const { catalog } = useModelCatalog({ refreshOnMount: true });
+
+  const change = async (model: string): Promise<void> => {
     if (model === settings.defaultModel) return;
     await localStore.setDefaultModel(model);
     patch({ defaultModel: model });
@@ -25,7 +29,7 @@ export function ModelSection({ settings, patch, flash }: SectionProps): JSX.Elem
       icon={<CpuIcon size={13} />}
     >
       <div className="space-y-1.5">
-        {MODEL_CATALOG.map((m) => {
+        {catalog.models.map((m) => {
           const active = m.id === settings.defaultModel;
           const tierTone =
             m.tier?.toLowerCase() === "fast"

@@ -6,10 +6,13 @@
 import { z } from "zod";
 import { ACTIONS } from "./actions";
 import { TONE_PRESETS } from "./tones";
-import { MODEL_IDS } from "./models";
 import { LANGUAGE_IDS, SOURCE_LANGUAGE_IDS } from "./languages";
 import { ContextSchema, SseUsagePayloadSchema } from "./schemas";
 import { ERROR_CODES } from "./errors";
+
+// Open-set model id — see schemas.ts for the rationale. Re-declared
+// locally so this file stays independent of schemas.ts internals.
+const ModelIdField = z.string().min(1).max(120);
 
 // Each message is discriminated on `type`. Background routes by `type` and
 // validates the rest of the payload via the matching schema.
@@ -68,7 +71,7 @@ export const CompleteStartMessageSchema = z.object({
     context: ContextSchema,
     tone: z.enum(TONE_PRESETS).optional(),
     instruction: z.string().max(1000).optional(),
-    model: z.enum(MODEL_IDS).optional(),
+    model: ModelIdField.optional(),
     // Language controls forwarded verbatim to /api/v1/complete — see the
     // matching fields on CompleteRequestSchema in ./schemas.
     sourceLanguage: z.enum(SOURCE_LANGUAGE_IDS).optional(),
