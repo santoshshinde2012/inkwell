@@ -208,6 +208,16 @@ the OCR pipeline in
 and the request/response DTOs in
 [`domain/schemas.py`](../../backend/src/inkwell_backend/domain/schemas.py).
 
+### Optional: route the bundled backend through Portkey
+
+The bundled backend can route every upstream LLM call through the
+[Portkey AI gateway](https://portkey.ai) as a transport-level
+toggle (`USE_PORTKEY=true` plus `PORTKEY_API_KEY`). No client code
+changes — the API contract above is unchanged. See
+[Reference: Environment § Portkey](../reference/environment.md#backend--portkey-ai-gateway-optional)
+and
+[Explanation: Model providers § Portkey](../explanation/model-providers.md#portkey-ai-gateway-optional-transport-toggle).
+
 ## See also
 
 - [Reference: API](../reference/api.md) — the same contract, endpoint-first.

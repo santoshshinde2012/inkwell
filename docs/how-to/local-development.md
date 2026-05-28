@@ -23,11 +23,44 @@ key in `backend/.env`:
 
 ```
 OPENAI_API_KEY=sk-...
-OPENAI_DEFAULT_MODEL=gpt-4o-mini
+DEFAULT_MODEL=gpt-4o-mini
 ```
 
 Restart the dev server. The startup log line should include
 `has_openai=True`.
+
+> `OPENAI_DEFAULT_MODEL` is still accepted as a backward-compat alias
+> for `DEFAULT_MODEL`, so existing `.env` files keep working.
+
+## Routing through the Portkey gateway
+
+Optionally, route every upstream call through the Portkey gateway
+(observability, caching, retries, fallbacks). Add to `backend/.env`:
+
+```
+USE_PORTKEY=true
+PORTKEY_API_KEY=pk-...
+
+# One of: keep OPENAI_API_KEY set and Portkey forwards it,
+# OR use a virtual key (recommended; OPENAI_API_KEY can be blank):
+PORTKEY_VIRTUAL_KEY=vk-...
+
+# Optional saved Portkey config (cache TTLs, fallbacks, guardrails):
+PORTKEY_CONFIG=cfg-...
+```
+
+Restart the dev server. The startup log line should now include
+`portkey_enabled=True`. The audit log line for each request gains a
+`via_portkey: true` field. The extension's `X-Client-Request-Id`
+flows through as `x-portkey-trace-id`, so the same UUID appears in
+both our logs and Portkey's dashboard.
+
+Setting `USE_PORTKEY=true` without `PORTKEY_API_KEY` aborts boot
+with a Pydantic `ValidationError` — by design, so misconfiguration
+fails loud instead of silently falling back to direct OpenAI.
+
+To revert: set `USE_PORTKEY=false` (or remove the line). No code
+change required — the toggle is transport-level.
 
 ## Running one layer at a time
 

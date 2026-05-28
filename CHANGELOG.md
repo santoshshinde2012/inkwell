@@ -8,6 +8,50 @@ uses semantic versioning.
 
 ### Added
 
+- **Portkey AI gateway integration (optional, transport-level toggle).**
+  Setting `USE_PORTKEY=true` (with `PORTKEY_API_KEY` set) routes every
+  upstream LLM call — `/api/v1/complete` chat completions *and*
+  `/api/v1/ocr` vision recognition — through the Portkey gateway,
+  unlocking observability, caching, retries, fallbacks, and centralised
+  secret management. Default behaviour is unchanged when the toggle is
+  off. The integration is concentrated in
+  [`backend/src/inkwell_backend/providers/portkey.py`](backend/src/inkwell_backend/providers/portkey.py)
+  + the existing OpenAI client factory; service code, route handlers, the
+  provider Protocol, and tests are untouched. Optional virtual-key mode
+  (`PORTKEY_VIRTUAL_KEY`) lets the Portkey vault provide the upstream
+  credential so `OPENAI_API_KEY` can be left blank in production.
+  Misconfiguration (`USE_PORTKEY=true` without `PORTKEY_API_KEY`) fails
+  loud at startup via a Pydantic cross-field validator.
+- **End-to-end distributed tracing through the gateway.** The extension's
+  `X-Client-Request-Id` UUID now flows through the completion and OCR
+  pipelines into the provider layer as
+  [`ProviderCompletionArgs.trace_id`](backend/src/inkwell_backend/providers/base.py)
+  / `VisionArgs.trace_id`; when Portkey is enabled, the OpenAI SDK
+  receives a per-call `extra_headers={"x-portkey-trace-id": <uuid>}`. One
+  id now correlates the popover, SSE stream, our audit log line, and
+  Portkey's gateway log — operators can pull up an entire request in a
+  single search across either system.
+- **Audit log gains a `via_portkey` dimension.**
+  [`CompletionLogEvent`](backend/src/inkwell_backend/services/audit.py)
+  carries `via_portkey: bool | None`, populated as the gateway-enabled
+  flag whenever a real upstream was hit (left `null` on the mock path so
+  it can't be misread as "direct"). Lets operators slice latency and
+  error metrics by transport path.
+- **Vendor-neutral default model setting.** Renamed `OPENAI_DEFAULT_MODEL`
+  → `DEFAULT_MODEL` (the catalog in `domain/models.py` resolves the id
+  to the right provider). The old env var is still accepted via Pydantic
+  `AliasChoices`, so existing `.env` files keep working.
+- **Single end-to-end OpenAI wrapper.** `providers/openai_provider.py`
+  now owns *both* chat completions and OCR vision — the OCR pipeline
+  used to bypass the provider abstraction and call the OpenAI SDK
+  directly. `services/ocr.py` now goes through
+  `provider.recognize_text(VisionArgs)` like every other call, so
+  swapping vendors is one new file in `providers/`. OCR prompts moved
+  to [`domain/prompts.py`](backend/src/inkwell_backend/domain/prompts.py),
+  and the `CompletionProvider` Protocol gained `recognize_text()` and
+  `aclose()` methods. The lifespan hook in `main.py` now calls
+  `aclose_all_providers()` instead of reaching into `openai_client`
+  directly.
 - **Backend operational endpoints.** `GET /api/v1/live` (process-alive
   probe), `GET /api/v1/ready` (readiness gate — 503 until lifespan
   startup completes), `GET /api/v1/version` (build version + boot

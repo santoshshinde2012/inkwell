@@ -1,7 +1,8 @@
 # Reference: Environment variables
 
-_Every env var the backend reads. Inkwell has no auth and no database —
-the only external dependency is OpenAI, so the list is short._
+_Every env var the backend reads. Inkwell has no auth and no database;
+the default upstream is OpenAI, optionally routed through the Portkey
+AI gateway as a transport-level toggle._
 
 The schema lives in
 [`backend/src/inkwell_backend/settings.py`](../../backend/src/inkwell_backend/settings.py).
@@ -13,17 +14,34 @@ For local dev, copy
 to `backend/.env`. For production, set them in the hosting
 platform's secret store.
 
-## Backend
+## Backend — core
 
 | Var | Required | Default | What it does |
 | --- | --- | --- | --- |
 | `APP_URL` | yes (prod) | `http://localhost:8000` | Backend's own origin; used by CORS for same-origin checks. |
 | `ALLOWED_EXTENSION_IDS` | yes (prod) | empty | Comma-separated `chrome-extension://<id>` origins permitted to call the API. **Production** requires it — without it, only same-origin is allowed. **Development** ignores the gap: any `chrome-extension://` origin is accepted so the unpacked extension works with no setup. |
 | `EXTRA_ALLOWED_ORIGINS` | no | empty | Comma-separated extra origins to allow (handy for staging proxies). Leave empty in production unless you really need this. |
-| `OPENAI_API_KEY` | yes (prod) | — | Server-side only. If absent, `/complete` serves a mock streaming response and `/ocr` returns a deterministic placeholder. |
-| `OPENAI_DEFAULT_MODEL` | no | `gpt-4o-mini` | Model used when the request doesn't specify one. Also drives the OCR vision call. |
+| `OPENAI_API_KEY` | conditional | — | Server-side only. Required when Portkey is off and you want real model calls. When `USE_PORTKEY=true` with a `PORTKEY_VIRTUAL_KEY` set, can be left blank — the Portkey vault provides the upstream credential. If neither is available, `/complete` serves a mock streaming response and `/ocr` returns a deterministic placeholder. |
+| `DEFAULT_MODEL` | no | `gpt-4o-mini` | Vendor-neutral default model id when the request doesn't specify one. The catalog in [`domain/models.py`](../../backend/src/inkwell_backend/domain/models.py) resolves the id to the right provider. Also drives the OCR vision call. The legacy `OPENAI_DEFAULT_MODEL` name is still accepted (Pydantic `AliasChoices`) so existing `.env` files keep working. |
 | `ENVIRONMENT` | no | `development` | One of `development` / `production` / `test`. Production hides `/docs` + `/openapi.json` and tightens the CORS allow-list to the explicit list. |
 | `LOG_LEVEL` | no | `INFO` | Stdlib log-level name. `DEBUG` while iterating; `INFO` in prod. |
+
+## Backend — Portkey AI gateway (optional)
+
+When `USE_PORTKEY=true` the backend constructs its OpenAI client
+against Portkey's gateway URL with `x-portkey-*` headers attached.
+Everything else (routes, services, the provider Protocol, tests)
+behaves identically. See
+[Explanation: Model providers § Portkey](../explanation/model-providers.md#portkey-ai-gateway-optional-transport-toggle)
+for the design rationale.
+
+| Var | Required | Default | What it does |
+| --- | --- | --- | --- |
+| `USE_PORTKEY` | no | `false` | Explicit on/off. Set `true` to route every upstream call through Portkey. |
+| `PORTKEY_API_KEY` | yes when `USE_PORTKEY=true` | — | Portkey project / workspace key. Misconfiguration (`USE_PORTKEY=true` with this empty) fails loud at startup with a `ValidationError` — by design. |
+| `PORTKEY_VIRTUAL_KEY` | no | — | When set, Portkey's vault provides the upstream provider credential and `OPENAI_API_KEY` can be left blank. Recommended for production. |
+| `PORTKEY_CONFIG` | no | — | Points at a saved Portkey config id (cache TTLs, fallbacks, guardrails). Leave blank to use the account default. |
+| `PORTKEY_BASE_URL` | no | `https://api.portkey.ai/v1` | Override only for a self-hosted gateway (e.g. `http://portkey:8787/v1` inside a docker network). Trailing slashes are stripped. |
 
 > **Never** expose `OPENAI_API_KEY` to the client. The FastAPI service
 > is the only thing that should read it. If you do so by accident,
@@ -48,12 +66,18 @@ the extension's `chrome.storage.local`.
 The backend logs a single startup line when it binds:
 
 ```
-{"level":"info","message":"inkwell-backend ready","version":"1.1.0","environment":"production","has_openai":true,...}
+{"level":"info","message":"inkwell-backend ready","version":"1.1.0","environment":"production","has_openai":true,"portkey_enabled":false,...}
 ```
 
-If `has_openai=false` in production, `OPENAI_API_KEY` is missing —
-`/complete` would serve mock responses to real users. Set the key and
-restart the service.
+Two flags to verify on a prod boot:
+
+- `has_openai=false` in production means no usable upstream credential
+  was found (no `OPENAI_API_KEY` *and* no `PORTKEY_VIRTUAL_KEY` if
+  Portkey is on). `/complete` would serve mock responses to real users
+  — set the credential and restart.
+- `portkey_enabled=true` confirms the gateway toggle. If you set
+  `USE_PORTKEY=true` but this is `false`, check the startup error log
+  — a missing `PORTKEY_API_KEY` aborts the boot before this line.
 
 ## See also
 

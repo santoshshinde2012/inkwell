@@ -180,8 +180,9 @@ Validation lives in
   page context — see [three-rewrite-modes.md](../explanation/three-rewrite-modes.md).
 - `model`, if present, must be an id in the shared model catalog;
   unknown ids are rejected. When omitted, the backend uses
-  `OPENAI_DEFAULT_MODEL` then the catalog default. The extension
-  always sends the user's selected model. See
+  `DEFAULT_MODEL` (legacy `OPENAI_DEFAULT_MODEL` is still accepted)
+  then the catalog default. The extension always sends the user's
+  selected model. See
   [model-providers.md](../explanation/model-providers.md).
 - `sourceLanguage` / `targetLanguage`, if present, must be ids in the
   shared language catalog (`sourceLanguage` also accepts `"auto"`).

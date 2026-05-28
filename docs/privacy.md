@@ -71,11 +71,14 @@ defaults wherever the FastAPI service is deployed.
 | Vendor | Purpose | Data |
 | --- | --- | --- |
 | **OpenAI** | LLM completion + vision OCR | Prompt + page context + images (in-flight only) |
+| **Portkey** (only when `USE_PORTKEY=true`) | AI gateway sitting between the backend and OpenAI — observability, caching, retries, fallbacks | API traffic + metadata + request-trace ids. Same prompt content as OpenAI sees, in flight only. Cache contents are subject to Portkey's retention policy for the workspace; configure cache TTL via `PORTKEY_CONFIG` if relevant. |
 | **Hosting provider** | Where the FastAPI service is deployed | API traffic + metadata logs |
 
 OpenAI API traffic is configured with training opt-out. OpenAI's own
 30-day abuse-monitoring retention is outside our control — don't put
-highly sensitive data in prompts.
+highly sensitive data in prompts. When Portkey is on, the gateway sees
+the same prompt content in transit; check the workspace's logging and
+retention settings to match the policy you publish.
 
 There is no auth provider and no database vendor — Inkwell has neither.
 

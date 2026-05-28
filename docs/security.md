@@ -18,7 +18,10 @@ reports or run automated scans against production without permission.
 
 ## Guarantees
 
-1. **The OpenAI API key never leaves the backend.** Server-to-server only.
+1. **Provider keys never leave the backend.** The OpenAI API key (or
+   the Portkey project key, when the gateway is on) is server-to-server
+   only. With Portkey + a `PORTKEY_VIRTUAL_KEY`, the provider credential
+   doesn't even live in the backend's env — Portkey's vault holds it.
 2. **Untrusted page content never confuses the model into running
    instructions.** Page text is data, not commands.
 3. **No prompt content is ever logged or persisted.**
@@ -38,7 +41,8 @@ unauthenticated. See "Accepted risks" below.
 
 | Asset | Where it lives | Why it matters |
 | --- | --- | --- |
-| OpenAI API key | Hosting platform's secret store (server only) | Direct billing exposure |
+| OpenAI API key | Hosting platform's secret store (server only) — or **Portkey vault** when `USE_PORTKEY=true` + `PORTKEY_VIRTUAL_KEY` is set | Direct billing exposure |
+| Portkey project key | Hosting platform's secret store (server only) | Direct billing exposure through the gateway |
 | Page context the user is replying to | TLS in flight; never persisted server-side | May contain private content |
 | User settings (profile, languages, site lists) | `chrome.storage.local`, on-device | Personal preferences |
 | Translation & action history | `chrome.storage.local`, on-device | Holds customer-query text; never leaves the device |
@@ -99,9 +103,14 @@ unauthenticated. See "Accepted risks" below.
 - **OpenAI client timeouts** — explicit 5 s connect / 60 s read on the
   shared `AsyncOpenAI` instance, so a hung upstream can't tie up a
   worker for the SDK's default 600 s.
+- **Fail-loud Portkey config.** Setting `USE_PORTKEY=true` without
+  `PORTKEY_API_KEY` raises a Pydantic `ValidationError` at process boot
+  — not silently at first request. Closes the "I thought Portkey was
+  on but tokens silently went straight to OpenAI" misconfiguration.
 - **Metadata-only logging** — action, model, token counts, latency,
-  client IP, `X-Client-Request-Id` for end-to-end correlation. Never
-  prompt or completion content.
+  client IP, `X-Client-Request-Id` for end-to-end correlation,
+  `via_portkey` for transport-path observability. Never prompt or
+  completion content.
 
 ### Prompt-injection defense
 
@@ -141,18 +150,25 @@ caps; preview-before-insert (the user always reviews the output).
 
 On every prod deploy verify:
 
-- `OPENAI_API_KEY` and `ALLOWED_EXTENSION_IDS` are set; the backend's
-  startup log line includes `has_openai=True`.
+- A usable upstream credential is configured and the backend's startup
+  log line includes `has_openai=True`. With Portkey off, that means
+  `OPENAI_API_KEY` is set. With Portkey on (`portkey_enabled=true`),
+  either `PORTKEY_VIRTUAL_KEY` or `OPENAI_API_KEY` must be set —
+  preferably the virtual key, so the provider secret stays in the
+  vault.
 - `ALLOWED_EXTENSION_IDS` contains only legitimate extension IDs.
 - A `/complete` request from a foreign origin returns
   `403 ORIGIN_NOT_ALLOWED`.
 - An "ignore previous instructions" payload returns `403 FORBIDDEN`.
 - The 21st request in a minute from one IP returns `429 RATE_LIMITED`.
 - Logs contain no prompt/completion content.
-- The OpenAI API key is rotated quarterly (or sooner on suspected
-  leak). Generate the new key, update it in your hosting platform's
-  secret store, restart the service, verify a `/complete` succeeds,
-  then revoke the old key.
+- The provider key (or the Portkey virtual key) is rotated quarterly
+  (or sooner on suspected leak). Generate the new key, update it in
+  the hosting platform's secret store (or in Portkey's vault),
+  restart the service, verify a `/complete` succeeds, then revoke the
+  old key.
+- When Portkey is on, the audit log line carries `via_portkey=true`
+  on real upstream calls — confirms the toggle is actually applied.
 
 ## See also
 

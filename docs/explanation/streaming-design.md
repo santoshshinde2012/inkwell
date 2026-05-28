@@ -78,7 +78,10 @@ dependency, propagates it through the completion pipeline, and
 includes it in the structured `audit.log_completion` line. One UUID
 ties together: the popover's local state, the SSE messages routed
 through the background service worker, and the server-side log entry
-for that generation. Custom backends should accept and log it.
+for that generation. When the optional Portkey gateway is on, the
+same UUID is forwarded as the `x-portkey-trace-id` per-call header,
+so the gateway-side request log joins the same id. Custom backends
+should accept and log it.
 
 ## Server: FastAPI + StreamingResponse
 

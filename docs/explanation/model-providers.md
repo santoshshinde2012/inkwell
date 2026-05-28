@@ -67,7 +67,14 @@ class CompletionProvider(Protocol):
     def configured(self) -> bool: ...   # real credentials present?
 
     def stream_completion(self, args: ProviderCompletionArgs) -> AsyncIterator[CompletionChunk]: ...
+    async def recognize_text(self, args: VisionArgs) -> VisionResult: ...
+    async def aclose(self) -> None: ...  # release pooled HTTP clients on shutdown
 ```
+
+`recognize_text` covers `/api/v1/ocr`; the same provider serves both
+chat completions and image-to-text so swapping vendors is one file.
+`aclose` is called from the FastAPI lifespan hook via the registry —
+each provider closes its own pools.
 
 [`providers/registry.py`](../../backend/src/inkwell_backend/providers/registry.py)
 holds a `dict[ModelProvider, CompletionProvider]`. The completion
@@ -158,6 +165,88 @@ The picker, the request schema, and validation all update automatically.
 
 Nothing else changes — not the route handler, not `services/completion.py`,
 not the schema, not the extension UI.
+
+## Portkey AI gateway (optional transport toggle)
+
+The provider abstraction handles vendor *selection*. Portkey is a
+**transport** layer that sits between the provider and the network —
+toggled with `USE_PORTKEY=true` on the backend. The gateway adds
+observability, caching, retries, fallbacks, and vault-backed secret
+management without changing the application code.
+
+The integration is deliberately concentrated in **one file**:
+[`backend/src/inkwell_backend/providers/portkey.py`](../../backend/src/inkwell_backend/providers/portkey.py).
+Provider implementations call its helpers; nothing else in the codebase
+knows the gateway exists.
+
+```mermaid
+flowchart LR
+    Service["services/completion.py<br/>services/ocr.py"]
+    Provider["providers/openai_provider.py<br/>(or anthropic_provider, ...)"]
+    Client["providers/openai_client.py<br/>AsyncOpenAI singleton"]
+    Portkey["providers/portkey.py<br/>(toggle: USE_PORTKEY)"]
+    OpenAI[("OpenAI API")]
+    Gateway[("Portkey gateway")]
+
+    Service --> Provider
+    Provider --> Client
+    Client -. asks .-> Portkey
+    Portkey -- USE_PORTKEY=false --> OpenAI
+    Portkey -- USE_PORTKEY=true --> Gateway
+    Gateway --> OpenAI
+```
+
+Two functions in `portkey.py` do all the work:
+
+- `build_client_overrides(provider, vendor_api_key)` — returns the
+  `base_url`, the `x-portkey-*` headers, and the api key to hand the
+  vendor SDK. Returns `None` when the toggle is off, so the OpenAI
+  client factory falls through to its default construction.
+- `build_request_headers(trace_id)` — returns per-call `extra_headers`
+  to merge on each SDK call. Today that's only
+  `x-portkey-trace-id`, forwarded from `X-Client-Request-Id` so
+  gateway-side logs join our audit log line on a single id.
+
+### Adding the gateway to a new vendor
+
+When you wire up Anthropic (or any other provider), call the same two
+helpers from its client factory:
+
+```python
+# providers/anthropic_client.py (sketch)
+from .portkey import build_client_overrides, build_request_headers
+
+def get_anthropic_client():
+    settings = get_settings()
+    overrides = build_client_overrides(
+        "anthropic",
+        vendor_api_key=settings.anthropic_api_key,
+    )
+    if overrides is None:
+        return AsyncAnthropic(api_key=settings.anthropic_api_key, ...)
+    return AsyncAnthropic(
+        api_key=overrides.api_key,
+        base_url=overrides.base_url,
+        default_headers=overrides.default_headers,
+        ...
+    )
+```
+
+The new vendor inherits the toggle, the trace forwarding, and the
+audit log dimension for free.
+
+### What ends up in the audit log
+
+[`CompletionLogEvent.via_portkey`](../../backend/src/inkwell_backend/services/audit.py)
+captures whether the gateway was on the call path:
+
+| `has_openai` | `portkey_enabled` | `via_portkey` in log |
+| --- | --- | --- |
+| `false` (mock) | any | `null` — dimension would be misleading |
+| `true` | `false` | `false` — direct vendor call |
+| `true` | `true` | `true` — through the gateway |
+
+Lets operators slice latency and error metrics by transport path.
 
 ## See also
 

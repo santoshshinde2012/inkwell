@@ -3,8 +3,9 @@
 _What runs where, what talks to what, and why._
 
 Inkwell has **no authentication and no database**. The Chrome extension
-calls the backend anonymously; the backend's only external dependency is
-OpenAI; all user settings live in `chrome.storage.local`.
+calls the backend anonymously; the backend's default upstream is OpenAI,
+optionally routed through the Portkey AI gateway as a transport-level
+toggle; all user settings live in `chrome.storage.local`.
 
 ## High-level
 
@@ -30,8 +31,15 @@ OpenAI; all user settings live in `chrome.storage.local`.
 │  └───────┘  └────────┘  │                      │  │  POST /ocr         │  │
 │  settings: chrome.storage.local                │  └─────────┬──────────┘  │
 └─────────────────────────┘                      │            ▼             │
-                                                 │   OpenAI (mocked if      │
-                                                 │   OPENAI_API_KEY unset)  │
+                                                 │   AsyncOpenAI client     │
+                                                 │   (mocked if no key,     │
+                                                 │   pointed at Portkey if  │
+                                                 │   USE_PORTKEY=true)      │
+                                                 │            │             │
+                                                 │            ▼             │
+                                                 │   Portkey gateway ──▶    │
+                                                 │   OpenAI (direct when    │
+                                                 │   gateway off)           │
                                                  └──────────────────────────┘
 ```
 
@@ -89,10 +97,11 @@ package that imports FastAPI.
 | [`src/inkwell_backend/services/rate_limit.py`](../../backend/src/inkwell_backend/services/rate_limit.py) | In-memory per-IP sliding-window limiter (20/min, 500/day), `deque`-backed. |
 | [`src/inkwell_backend/services/prompt.py`](../../backend/src/inkwell_backend/services/prompt.py) | Strategy registry per action; wraps page context in `<UNTRUSTED_CONTEXT>`. |
 | [`src/inkwell_backend/services/sanitizer.py`](../../backend/src/inkwell_backend/services/sanitizer.py) | Strips role markers, caps length, flags injection payloads. |
-| [`src/inkwell_backend/services/audit.py`](../../backend/src/inkwell_backend/services/audit.py) | Metadata-only structured logging — propagates `X-Client-Request-Id` for end-to-end correlation. |
-| [`src/inkwell_backend/providers/openai_client.py`](../../backend/src/inkwell_backend/providers/openai_client.py) | Process-wide `AsyncOpenAI` singleton with explicit httpx timeouts; closed on graceful shutdown. |
-| [`src/inkwell_backend/providers/`](../../backend/src/inkwell_backend/providers/) | Provider abstraction — `CompletionProvider` Protocol, the OpenAI implementation (real + mock fallback), and a registry keyed by `ModelProvider`. The pipeline dispatches via `get_provider_for_model`. See [model-providers.md](../explanation/model-providers.md). |
-| [`src/inkwell_backend/domain/`](../../backend/src/inkwell_backend/domain/) | Pure types: actions, tones, models, languages, limits, errors, Pydantic schemas, SSE encoders. |
+| [`src/inkwell_backend/services/audit.py`](../../backend/src/inkwell_backend/services/audit.py) | Metadata-only structured logging — propagates `X-Client-Request-Id` for end-to-end correlation; carries `via_portkey` dimension when a real upstream was hit. |
+| [`src/inkwell_backend/providers/openai_client.py`](../../backend/src/inkwell_backend/providers/openai_client.py) | Process-wide `AsyncOpenAI` singleton with explicit httpx timeouts; closed on graceful shutdown. Picks up Portkey overrides automatically when the toggle is on. |
+| [`src/inkwell_backend/providers/portkey.py`](../../backend/src/inkwell_backend/providers/portkey.py) | Portkey AI gateway helpers — base URL, header builder, per-request trace forwarding. Single place that knows about the gateway; vendor client factories call into it. |
+| [`src/inkwell_backend/providers/`](../../backend/src/inkwell_backend/providers/) | Provider abstraction — `CompletionProvider` Protocol (chat + vision + lifecycle), the OpenAI implementation (real + mock fallback), and a registry keyed by `ModelProvider`. The pipeline dispatches via `get_provider_for_model`. See [model-providers.md](../explanation/model-providers.md). |
+| [`src/inkwell_backend/domain/`](../../backend/src/inkwell_backend/domain/) | Pure types: actions, tones, models, languages, limits, prompts, errors, Pydantic schemas, SSE encoders. |
 
 ### Shared
 

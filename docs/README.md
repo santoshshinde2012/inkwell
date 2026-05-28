@@ -6,8 +6,9 @@ This directory holds all project documentation. The top-level
 The structure follows the **[Diátaxis](https://diataxis.fr)** framework.
 
 > **No accounts, no database.** Inkwell works anonymously. There is no
-> sign-in and no database — the only external dependency is OpenAI, and
-> all extension settings and history live in `chrome.storage.local`.
+> sign-in and no database — the default upstream is OpenAI (optionally
+> routed through the Portkey AI gateway as a transport-level toggle),
+> and all extension settings and history live in `chrome.storage.local`.
 
 ## Where to start
 
