@@ -51,6 +51,7 @@ import {
   captureErrorMessage,
 } from "./captureSelection";
 import { extractTextFromImage, isImageBlob, OcrError, type OcrProgress } from "../../lib/ocr";
+import { decideDefaultAction, type DefaultActionSource } from "../../lib/default-action";
 
 export interface AssistantViewProps {
   backendStatus: BackendStatus;
@@ -93,6 +94,35 @@ export function AssistantView({
   }, [parentBackendStatus, backendUrl, setBackend]);
 
   // -------------------------------------------------------------------------
+  // Default-action auto-apply
+  //
+  // Fires when new text lands in the panel from a *fresh context* —
+  // selection capture, OCR finish, popover handoff — and picks a
+  // sensible default action based on the text's source surface and
+  // language. Manual ActionSegments clicks still go through
+  // `handleActionChange` (further down) which clears the existing
+  // result; this path deliberately does NOT clear the preview because
+  // the user didn't ask for an action switch.
+  // -------------------------------------------------------------------------
+  const applyDefaultAction = useCallback(
+    async (text: string, source: DefaultActionSource): Promise<void> => {
+      // Mid-stream auto-switch would be jarring; let the user finish.
+      if (result.streaming) return;
+      const next = await decideDefaultAction({ text, source });
+      if (next === settings.action) return;
+      settings.setAction(next);
+      // Mirror the reconciliation handleActionChange does so the
+      // target language stays valid for the new mode.
+      if (next === "translate") {
+        settings.setTargetChoice((cur) => (isLanguageId(cur) ? cur : settings.workingLanguage));
+      } else if (next === "rewrite") {
+        settings.setTargetChoice((cur) => (cur === "bilingual" ? "match" : cur));
+      }
+    },
+    [settings, result.streaming],
+  );
+
+  // -------------------------------------------------------------------------
   // OCR — runs against a Blob/File and pushes the recognised text into
   // the textarea. Used by the "+" image picker, paste, and drag-drop.
   // The right-click context menu has its own dedicated route through
@@ -107,20 +137,51 @@ export function AssistantView({
       if (ocrStatus !== null) return; // a recognition is already in flight
       setOcrStatus("Preparing OCR…");
       result.clearError();
+
+      // Snapshot the baseline input text the streaming callback will
+      // append to. `inputText` is closed over and would be stale here
+      // (not in the useCallback deps); the functional setState form is
+      // the safe way to read the current value without triggering a
+      // re-render — returning `cur` unchanged is a no-op for React.
+      let baseline = "";
+      setInputText((cur) => {
+        baseline = cur.trimEnd();
+        return cur;
+      });
+      const separator = baseline ? "\n\n" : "";
+
       const onProgress = (p: OcrProgress): void => {
         const pct = typeof p.progress === "number" ? ` ${Math.round(p.progress * 100)}%` : "";
         setOcrStatus(`${p.status}${pct}`);
       };
+
+      // Progressive write-through: each delta from the backend stream
+      // lands directly in the textarea, so the user sees text appear
+      // in place rather than waiting for the whole image to transcribe.
+      // `running` is the full accumulated text from the start of OCR,
+      // so we can replace (not append) without bookkeeping the cursor.
+      const onPartial = (running: string): void => {
+        setInputText(`${baseline}${separator}${running}`);
+      };
+
       try {
         const text = await extractTextFromImage(blob, {
           backendUrl: settings.backend.url,
           onProgress,
+          onPartial,
         });
-        // Append rather than replace so the user can OCR multiple images
-        // and keep building up an input. Newline-separate to avoid joining
-        // unrelated snippets into one line.
-        setInputText((cur) => (cur ? `${cur.trimEnd()}\n\n${text}` : text));
+        // Commit the final, trimmed value. No-op when streaming has
+        // already landed on the same string; covers the JSON-fallback
+        // path where `onPartial` never fired.
+        setInputText(`${baseline}${separator}${text}`);
+        // OCR text comes from an image — treated as "page" content
+        // (not the user's draft), so an English result defaults to
+        // "reply" and a non-English result to "translate".
+        void applyDefaultAction(text, "page");
       } catch (err) {
+        // Roll back any text the stream may have written so a failed
+        // OCR doesn't leave the textarea in a half-extracted state.
+        setInputText(baseline);
         const msg =
           err instanceof OcrError
             ? err.message
@@ -132,7 +193,7 @@ export function AssistantView({
         setOcrStatus(null);
       }
     },
-    [ocrStatus, result, settings.backend.url],
+    [ocrStatus, result, settings.backend.url, applyDefaultAction],
   );
 
   // -------------------------------------------------------------------------
@@ -159,11 +220,21 @@ export function AssistantView({
     const h = await consumeHandoff();
     if (!h) return;
     if (h.text) setInputText(h.text);
-    if (h.action) applyAction(h.action);
+    if (h.action) {
+      // The popover already picked an action when stashing — respect
+      // it. (Right-click OCR's side-panel fallback doesn't stash an
+      // action, so the next branch handles that case.)
+      applyAction(h.action);
+    } else if (h.text) {
+      // Handoff text without an explicit action — typically the
+      // right-click-OCR side-panel fallback. Treat it as page-sourced
+      // and let the decider pick.
+      void applyDefaultAction(h.text, "page");
+    }
     if (h.errorMessage) {
       result.surfaceError(h.errorMessage);
     }
-  }, [applyAction, result]);
+  }, [applyAction, applyDefaultAction, result]);
 
   useEffect(() => {
     void applyHandoff();
@@ -217,12 +288,17 @@ export function AssistantView({
     if (r.kind === "ok") {
       setInputText(r.text);
       result.clearError();
+      // Fresh selection arriving from a tab — pick a default action
+      // based on where the selection came from (textarea/contenteditable
+      // → grammar; page text → reply) and its language (non-English
+      // → translate).
+      void applyDefaultAction(r.text, r.source);
       return;
     }
     // Selection failed (empty highlight or restricted page) — surface
     // the message without disturbing an existing preview or stream.
     result.surfaceError(captureErrorMessage(r.kind));
-  }, [result]);
+  }, [result, applyDefaultAction]);
 
   // -------------------------------------------------------------------------
   // Generate / cancel

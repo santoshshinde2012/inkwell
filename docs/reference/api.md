@@ -58,7 +58,7 @@ and `/ocr` routes additionally rate-limit by client IP.
 | `GET` | `/api/v1/version` | — | JSON | Build version + boot timestamp. |
 | `GET` | `/api/v1/models` | — | JSON | Model catalog the backend recognises. |
 | `POST` | `/api/v1/complete` | 32 KB | `text/event-stream` | Streaming chat completion. |
-| `POST` | `/api/v1/ocr` | 12 MB | JSON | Image → text via vision model. |
+| `POST` | `/api/v1/ocr` | 12 MB | JSON or `text/event-stream` | Image → text via vision model. Content-negotiated. |
 | `OPTIONS` | `/api/v1/*` | — | 204 | CORS preflight. |
 
 There are no profile, usage, or auth endpoints — user settings live in
@@ -240,7 +240,18 @@ any line whose first character is `:`.
 
 ## `POST /api/v1/ocr`
 
-Image-to-text via a vision model. Returns JSON (no streaming).
+Image-to-text via a vision model. **Content-negotiated** — the response
+shape is picked from the request's `Accept` header:
+
+- `Accept: text/event-stream` → SSE stream of `token` / `error` / `done`
+  frames (same envelope as `/complete`). Lets the side panel show text
+  as the model emits it.
+- `Accept: application/json` (default) → one-shot `{ text, model }`
+  body. Used by the right-click context-menu flow, which opens the
+  popover once at the end of OCR.
+
+The same image, model, prompt, rate-limit, and cache lookup apply to
+both branches — only the wire shape differs.
 
 ### Request
 
@@ -251,11 +262,35 @@ Image-to-text via a vision model. Returns JSON (no streaming).
 }
 ```
 
-- Body ≤ 12 MB.
+- Body ≤ 12 MB. The image payload itself is capped at 8 MB decoded
+  (`MAX_OCR_IMAGE_BYTES`); 12 MB JSON carries that 8 MB raw inflated
+  ~4/3 by base64.
 - `mimeType` is whitelisted to keep SVG and arbitrary binaries out.
-- Unknown top-level fields are rejected.
+- Unknown top-level fields are rejected (`extra="forbid"`).
 
-### Response
+#### Client-side preprocessing (side panel)
+
+The extension's side panel applies a preprocessing pass before
+upload — implemented in
+[`extension/src/lib/ocr.ts`](../../frontend/packages/extension/src/lib/ocr.ts):
+
+1. Decode with `createImageBitmap` (handles PNG, JPEG, WebP, GIF, AVIF,
+   and HEIC/HEIF on platforms where Chrome supports it).
+2. Apply EXIF orientation (`imageOrientation: "from-image"`) so phone
+   photos come out the right way up without shipping an EXIF parser.
+3. Downscale to ≤ 2,560 px on the longest edge — vision models tile at
+   ~768 px patches internally, so anything past that spends bytes for
+   no accuracy gain.
+4. Re-encode as JPEG @ 0.92 (white background fill so transparent PNGs
+   become black-on-white instead of black-on-black).
+
+The raw-input cap (`MAX_OCR_INPUT_BYTES = 32 MB`) is roomy because the
+preprocessor brings everything down well under the 8 MB backend cap.
+The right-click context-menu flow has its own canvas-based capture
+path in [`background/index.ts`](../../frontend/packages/extension/src/background/index.ts)
+and doesn't share this helper.
+
+### Response: `application/json` (default)
 
 ```json
 { "text": "...recognised text...", "model": "gpt-4o-mini" }
@@ -263,6 +298,41 @@ Image-to-text via a vision model. Returns JSON (no streaming).
 
 When `OPENAI_API_KEY` is unset, a deterministic mock placeholder is
 returned so the extension's UX path is testable without secrets.
+
+### Response: `text/event-stream`
+
+```
+event: token
+data: {"delta":"# Heading\n\n"}
+
+event: token
+data: {"delta":"First bullet "}
+
+event: done
+data: {"ok":true}
+```
+
+Same heartbeat (`: keep-alive\n\n`) and `error` frames as `/complete`:
+
+```
+event: error
+data: {"code":"UPSTREAM_ERROR","message":"...","retryable":true}
+```
+
+The OCR system prompt asks the model to preserve the document's
+structure as Markdown — pipe tables, fenced code blocks, lists,
+headings, LaTeX math — and to read multi-column layouts left-to-right
+per column. See
+[`backend/src/inkwell_backend/domain/prompts.py`](../../backend/src/inkwell_backend/domain/prompts.py).
+
+#### Cache hits on the SSE path
+
+A repeat call for the same image (same `model` + same canonical
+base64) is served from the in-process result cache (sha256-keyed,
+256-entry TTL+LRU, 24 h TTL). On the SSE path the full cached text
+arrives as a **single** `token` frame followed by `done` — the client
+parser doesn't need to branch on cache state. Cache hits skip the
+upstream call entirely but still respect per-IP rate limiting.
 
 ### Errors
 
@@ -275,6 +345,18 @@ Same envelope and codes as `/complete`. Notable cases:
 | `PAYLOAD_TOO_LARGE` | Body > 12 MB. |
 | `RATE_LIMITED` | Client IP exceeded the per-minute / per-day quota. Includes `Retry-After`. |
 | `UPSTREAM_ERROR` | OpenAI returned an error or the vision call timed out. |
+| `STREAM_ABORTED` | Client closed the connection mid-stream (SSE path only). |
+
+### Observability
+
+Every terminal outcome — success, cache hit, validation failure,
+rate-limited, abort, upstream error — emits exactly one
+`log.ocr` structured log line carrying `model`, `request_bytes`,
+`duration_ms`, `status`, `response_chars`, `cache_hit`, `streamed`,
+`error_code`, `client_request_id`, and `via_portkey`. The fields
+mirror `log.completion` so operators can slice OCR and chat metrics
+the same way. Definitions live in
+[`backend/src/inkwell_backend/services/audit.py`](../../backend/src/inkwell_backend/services/audit.py).
 
 ## See also
 

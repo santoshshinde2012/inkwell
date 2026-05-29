@@ -10,7 +10,8 @@ exposes:
 
 - `GET  /api/v1/health` — JSON health check
 - `POST /api/v1/complete` — SSE-streamed chat completion
-- `POST /api/v1/ocr` — image-to-text via a vision model
+- `POST /api/v1/ocr` — image-to-text via a vision model; JSON by default,
+  SSE stream when `Accept: text/event-stream` is sent
 
 There is no database and no authentication. The only external
 dependency is OpenAI.
@@ -114,11 +115,21 @@ curl -N http://localhost:8000/api/v1/complete \
   -d '{"action":"reply","context":{"post":{"text":"Ma commande est en retard."}},
        "sourceLanguage":"fr"}'
 
-# OCR a base64-encoded image
+# OCR a base64-encoded image (one-shot JSON)
 curl http://localhost:8000/api/v1/ocr \
   -H "Origin: http://localhost:8000" \
   -H "Content-Type: application/json" \
   -d '{"imageBase64":"<base64>","mimeType":"image/png"}'
+
+# OCR streamed as SSE deltas — same body, just add Accept and -N
+curl -N http://localhost:8000/api/v1/ocr \
+  -H "Origin: http://localhost:8000" \
+  -H "Accept: text/event-stream" \
+  -H "Content-Type: application/json" \
+  -d '{"imageBase64":"<base64>","mimeType":"image/png"}'
+# → emits `event: token` frames as the model produces text, then
+#   `event: done`. A second call with the same image is a cache hit
+#   and arrives as a single `event: token` followed by `event: done`.
 
 # With personalization (what the extension attaches from local storage)
 curl -N http://localhost:8000/api/v1/complete \

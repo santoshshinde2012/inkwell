@@ -1,7 +1,9 @@
 # Streaming design
 
 _Why `/api/v1/complete` is the way it is — server choice, SSE event
-shape, and how the extension consumes it._
+shape, and how the extension consumes it. `/api/v1/ocr` shares the
+same SSE format when called with `Accept: text/event-stream`; the
+shape, heartbeats, error frames, and parser all carry over._
 
 ## Why streaming
 
@@ -145,8 +147,35 @@ parses SSE events itself rather than using `EventSource`. Why?
 
 See [`background/api-client.ts`](../../frontend/packages/extension/src/background/api-client.ts).
 
+## OCR streaming
+
+`/api/v1/ocr` follows the same SSE contract on request — the route
+content-negotiates on `Accept`:
+
+- `Accept: application/json` (default) → one-shot
+  `{ text, model }`. Used by the background service worker's right-
+  click context-menu flow (the popover opens once at the end of OCR,
+  so progressive display would add complexity for no UX win).
+- `Accept: text/event-stream` → SSE stream of `token` / `error` /
+  `done` frames with the same `: keep-alive` heartbeats. Used by the
+  side panel, which surfaces the running text to the textarea via an
+  `onPartial` callback in
+  [`lib/ocr.ts`](../../frontend/packages/extension/src/lib/ocr.ts);
+  dense screenshots feel seconds faster because the user sees text
+  while the model is still transcribing the bottom of the image.
+
+The OCR pipeline writes the assembled text back to the in-process
+result cache on a clean finish, and any cache hit on the SSE path is
+emitted as a single `token` frame followed by `done` so the client
+parser doesn't have to branch on cache state.
+
+OCR's `OcrLogEvent` audit line (one per terminal outcome) carries
+`streamed: true | false` so operators can split SSE-vs-JSON latency
+distributions without inferring it from caller patterns.
+
 ## See also
 
 - [Reference: API § /api/v1/complete](../reference/api.md#post-apiv1complete)
+- [Reference: API § /api/v1/ocr](../reference/api.md#post-apiv1ocr)
 - [Reference: Architecture](../reference/architecture.md)
 - [Three rewrite modes](./three-rewrite-modes.md)

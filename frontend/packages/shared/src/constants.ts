@@ -25,8 +25,18 @@ export const LIMITS = {
   MAX_OCR_REQUEST_BYTES: 12 * 1024 * 1024,
 
   // Maximum decoded image size the OCR endpoint will hand to the
-  // vision model. Mirrors the cap clients enforce when picking files.
+  // vision model. Mirrors the cap the client enforces *after* the
+  // pre-upload preprocessing pass (decode → EXIF-rotate → downscale →
+  // re-encode JPEG). Practically nothing the user uploads ends up
+  // larger than this once preprocessed.
   MAX_OCR_IMAGE_BYTES: 8 * 1024 * 1024,
+
+  // Maximum size, in bytes, of the *raw* blob the side panel accepts
+  // before preprocessing. Phone photos and 4K screenshots routinely
+  // exceed the post-encode 8 MB cap above; the preprocessor scales them
+  // down to fit. This bound exists only to keep a wildly oversized file
+  // from blowing up memory during decode.
+  MAX_OCR_INPUT_BYTES: 32 * 1024 * 1024,
 } as const;
 
 // Model identifiers, the model catalog, and provider types live in ./models.

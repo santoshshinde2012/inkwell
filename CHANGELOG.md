@@ -8,6 +8,70 @@ uses semantic versioning.
 
 ### Added
 
+- **`/api/v1/ocr` content-negotiates streaming.** Clients sending
+  `Accept: text/event-stream` get an SSE byte stream of `token` /
+  `error` / `done` frames (with `: keep-alive` heartbeats every 15 s);
+  the default `Accept: application/json` path returns the one-shot
+  `{ text, model }` body unchanged. The provider Protocol gains
+  [`stream_recognize_text(args)`](backend/src/inkwell_backend/providers/base.py),
+  the OpenAI provider uses `stream=True` on the vision call with the
+  same prompt shape as the non-streaming path, and the mock provider
+  emits the placeholder in three chunks for realistic local-dev UX.
+  The side panel opts in via a new `onPartial` callback in
+  [`lib/ocr.ts`](frontend/packages/extension/src/lib/ocr.ts), which
+  surfaces the running text to the textarea as the model produces it
+  — for dense screenshots that removes seconds of perceived latency.
+  The right-click context-menu flow stays on JSON (it opens the
+  popover once on success), so no UX regression there.
+- **OCR pre-upload preprocessing pipeline.** Side-panel paste / drop /
+  file-picker images now decode → EXIF-rotate → downscale to
+  ≤ 2560 px on the longest edge → re-encode as JPEG @ 0.92 before
+  upload. Phone photos come out the right way up without us shipping
+  an EXIF parser; 4K screenshots that previously rejected at the 8 MB
+  cap now round-trip as ~500 KB; HEIC / AVIF (and anything else
+  Chrome can decode via `createImageBitmap`) is normalised to a
+  backend-accepted MIME type. The raw-input cap moved to
+  [`MAX_OCR_INPUT_BYTES`](frontend/packages/shared/src/constants.ts)
+  (32 MB) so users almost never hit it again.
+- **Structure-preserving OCR prompt.** Rewrote
+  [`OCR_SYSTEM_PROMPT`](backend/src/inkwell_backend/domain/prompts.py)
+  to keep the document's visual structure: tables as GitHub pipe
+  tables, code / shell output in fenced blocks (with original
+  indentation), bulleted and numbered lists, Markdown headings when
+  the hierarchy is clear, math as LaTeX, source-script preservation,
+  and an explicit multi-column reading-order rule. No content paraphrasing.
+- **Process-local OCR result cache.** A 256-entry, 24-hour TTL+LRU
+  cache keyed by `sha256(model || canonical_base64)` short-circuits
+  repeat OCR of the same image — right-clicking the same screenshot
+  twice now returns instantly without re-billing the upstream. The
+  cache module lives in
+  [`services/ocr_cache.py`](backend/src/inkwell_backend/services/ocr_cache.py),
+  is consulted by both the JSON and SSE paths, and writes through
+  on the streaming path's clean finish.
+- **OCR audit logging.**
+  [`OcrLogEvent`](backend/src/inkwell_backend/services/audit.py) joins
+  `CompletionLogEvent` with the same metadata-only discipline:
+  `model`, `request_bytes`, `duration_ms`, `status`, `response_chars`,
+  `cache_hit`, `streamed`, `error_code`, `client_request_id`,
+  `via_portkey`. Both the JSON path and the streaming generator's
+  `finally` block emit exactly one event per terminal outcome — success,
+  cache hit, abort, validation failure, rate limit, or upstream error
+  — so operators can slice OCR latency / cache hit rate / error rate
+  the same way they slice completions.
+- **Context-aware default action.** When fresh text arrives in the
+  side panel (capture selection, OCR finish, popover handoff) or in
+  the in-page popover (mount with a field or selection), the action
+  picker auto-selects based on the text's surface and language:
+  non-English → **translate**; English from a textarea /
+  contenteditable → **grammar**; English from page text or OCR → **reply**.
+  Language detection prefers Chrome's bundled CLD via
+  `chrome.i18n.detectLanguage` (run in parallel with the popover's
+  storage round-trips, so first paint already has the right answer)
+  and falls back to a Latin-script heuristic for short / low-confidence
+  text. New helpers live in
+  [`lib/default-action.ts`](frontend/packages/extension/src/lib/default-action.ts);
+  `GET_SELECTION` now carries the source kind so the side panel knows
+  whether the selection came from a draft or from page content.
 - **Portkey AI gateway integration (optional, transport-level toggle).**
   Setting `USE_PORTKEY=true` (with `PORTKEY_API_KEY` set) routes every
   upstream LLM call — `/api/v1/complete` chat completions *and*

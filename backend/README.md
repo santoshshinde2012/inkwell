@@ -41,7 +41,7 @@ The extension's `VITE_BACKEND_URL` should point at `http://localhost:8000`.
 - `GET  /api/v1/version` — Build version + boot timestamp.
 - `GET  /api/v1/models` — Model catalog the backend recognises.
 - `POST /api/v1/complete` — SSE stream of `token` / `usage` / `done` / `error` events. Heartbeat comments every 15 s.
-- `POST /api/v1/ocr` — JSON `{ text, model? }`, calls a vision model.
+- `POST /api/v1/ocr` — Content-negotiated. JSON `{ text, model? }` by default; SSE stream of `token` / `done` / `error` (same envelope as `/complete`) when `Accept: text/event-stream`. In-process result cache (sha256 of canonical image + model) short-circuits repeats; per-image audit log line carries `streamed` and `cache_hit` flags.
 - `OPTIONS /api/v1/*` — CORS preflight.
 
 CORS is enforced by middleware: only configured chrome-extension origins
@@ -69,7 +69,8 @@ src/inkwell_backend/
 │
 ├── services/              # business logic — no HTTP coupling
 │   ├── completion.py      # /complete pipeline (SSE)
-│   ├── ocr.py             # /ocr pipeline
+│   ├── ocr.py             # /ocr pipeline (JSON + SSE branches)
+│   ├── ocr_cache.py       # OCR result cache (process-local TTL+LRU)
 │   ├── prompt.py          # action-strategy prompt builder
 │   ├── sanitizer.py       # untrusted-content cleanup + injection detect
 │   ├── rate_limit.py      # in-memory IP sliding window
@@ -192,9 +193,12 @@ Best-practice notes:
   client IP. Counters reset on cold start. For a hard quota, swap the
   in-process store in `services/rate_limit.py` for Redis without
   touching any caller.
-- **No content logging.** Only request metadata is logged (action,
-  model, token counts, latency, status). Prompts and completions are
-  never written.
+- **No content logging.** Only request metadata is logged. Chat
+  completions emit `log.completion` (action, model, token counts,
+  latency, status); OCR emits `log.ocr` (model, request bytes,
+  latency, status, `response_chars`, `cache_hit`, `streamed`,
+  `error_code`). Prompts, completions, image bytes, and recognised
+  text content are never written.
 - **Mock provider** kicks in when no usable upstream credential is
   configured (no `OPENAI_API_KEY` and no `PORTKEY_VIRTUAL_KEY`), so
   local dev needs zero secrets and produces deterministic output. Same

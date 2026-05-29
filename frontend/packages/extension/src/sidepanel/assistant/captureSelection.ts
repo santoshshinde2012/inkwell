@@ -4,7 +4,17 @@
 // Pulled out of the view so React state ownership stays with the caller
 // and these stay trivially testable.
 
-export type CaptureResult = { kind: "ok"; text: string } | { kind: "empty" } | { kind: "blocked" };
+/** Where the captured selection came from. "field" = inside a
+ *  textarea / input / contenteditable; "page" = a normal page-text
+ *  selection. The side panel forwards this to the default-action
+ *  decider so a draft-style selection gets "grammar" and a normal
+ *  page selection gets "reply" (when the text is English). */
+export type SelectionSource = "field" | "page";
+
+export type CaptureResult =
+  | { kind: "ok"; text: string; source: SelectionSource }
+  | { kind: "empty" }
+  | { kind: "blocked" };
 
 const MESSAGES: Record<Exclude<CaptureResult["kind"], "ok">, string> = {
   empty: "No text is selected on the active tab. Highlight some text first, then try again.",
@@ -21,9 +31,13 @@ export const captureActiveSelection = async (): Promise<CaptureResult> => {
     if (!tab?.id) return { kind: "empty" };
     const res = (await chrome.tabs.sendMessage(tab.id, {
       type: "GET_SELECTION",
-    })) as { text?: string } | undefined;
+    })) as { text?: string; source?: SelectionSource } | undefined;
     const text = (res?.text ?? "").trim();
-    return text ? { kind: "ok", text } : { kind: "empty" };
+    // Default to "page" when an older content script (or unknown
+    // sender) doesn't include the source tag — matches the previous
+    // behaviour for selections we can't classify.
+    const source: SelectionSource = res?.source === "field" ? "field" : "page";
+    return text ? { kind: "ok", text, source } : { kind: "empty" };
   } catch {
     return { kind: "blocked" };
   }

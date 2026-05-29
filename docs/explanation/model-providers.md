@@ -83,13 +83,23 @@ class CompletionProvider(Protocol):
 
     def stream_completion(self, args: ProviderCompletionArgs) -> AsyncIterator[CompletionChunk]: ...
     async def recognize_text(self, args: VisionArgs) -> VisionResult: ...
+    def stream_recognize_text(self, args: VisionArgs) -> AsyncIterator[str]: ...
     async def aclose(self) -> None: ...  # release pooled HTTP clients on shutdown
 ```
 
-`recognize_text` covers `/api/v1/ocr`; the same provider serves both
-chat completions and image-to-text so swapping vendors is one file.
-`aclose` is called from the FastAPI lifespan hook via the registry —
-each provider closes its own pools.
+`recognize_text` covers the one-shot JSON path of `/api/v1/ocr`;
+`stream_recognize_text` yields text deltas for the SSE path (the side
+panel opts in via `Accept: text/event-stream` so users see text appear
+as the model emits it). The same provider serves both chat completions
+and image-to-text — streaming and non-streaming — so swapping vendors
+is one file. `aclose` is called from the FastAPI lifespan hook via the
+registry; each provider closes its own pools.
+
+Adding a new provider means implementing all four methods. The OpenAI
+provider builds the streaming and non-streaming vision calls from the
+same prompt shape (only `stream=True` and the iteration loop differ),
+and the mock provider yields the placeholder in a few small chunks so
+local dev exercises the same SSE wire format as production.
 
 [`providers/registry.py`](../../backend/src/inkwell_backend/providers/registry.py)
 holds `_REAL_PROVIDERS: dict[ModelProvider, CompletionProvider]`. The
@@ -170,7 +180,8 @@ backend reads the JSON at startup and the extension's next
    exposing a module-level `anthropic_provider: CompletionProvider`.
    The class is **pure Anthropic**; it does not import the mock provider
    or handle any fallback. Just implement `configured`,
-   `stream_completion`, `recognize_text`, and `aclose`.
+   `stream_completion`, `recognize_text`, `stream_recognize_text`, and
+   `aclose`.
 
 4. **Register it** in `providers/registry.py`:
    ```python
@@ -273,8 +284,10 @@ over identically.
 
 ### What ends up in the audit log
 
+Both
 [`CompletionLogEvent.via_portkey`](../../backend/src/inkwell_backend/services/audit.py)
-captures whether the gateway was on the call path:
+and `OcrLogEvent.via_portkey` capture whether the gateway was on the
+call path:
 
 | `has_openai` | `portkey_enabled` | `via_portkey` in log |
 | --- | --- | --- |
@@ -285,6 +298,13 @@ captures whether the gateway was on the call path:
 Lets operators slice latency and error metrics by transport path. The
 matching startup log line `inkwell-backend ready: <transport>` reports
 the active mode at a glance.
+
+`OcrLogEvent` carries two extra dimensions absent from completion logs:
+`cache_hit` (response served from the in-process result cache) and
+`streamed` (SSE path vs JSON path). Cache hits are useful for
+projecting upstream-cost savings; the streaming flag separates the
+side-panel SSE path from the right-click-context-menu JSON path so
+their latencies don't get blended in a single histogram.
 
 ## See also
 

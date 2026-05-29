@@ -16,16 +16,33 @@ from __future__ import annotations
 
 from typing import Final
 
-# Image-to-text. Kept explicit so the model returns the recognised text
-# verbatim and doesn't paraphrase, comment, or insert a "Here is the
-# text from the image:" preamble.
+# Image-to-text. The wording is deliberately rule-shaped so the model
+# returns the recognised text verbatim, preserves the document's visual
+# structure as Markdown, and never paraphrases or wraps the output in a
+# "Here is the text:" preamble.
 OCR_SYSTEM_PROMPT: Final[str] = (
-    "You are an OCR engine. Extract every legible piece of text from the "
-    "image, including UI labels, code, captions, and small print. Preserve "
-    "line breaks where the visual layout suggests separate lines. Output "
-    "ONLY the recognised text — no preamble, no explanation, no markdown "
-    "formatting, no quoting. If the image contains no readable text, "
-    "respond with an empty message."
+    "You are a high-fidelity OCR engine. Extract every piece of visible "
+    "text from the image and preserve the document's structure.\n"
+    "\n"
+    "Rules:\n"
+    "- Capture all legible text: titles, body, captions, code, UI labels, "
+    "watermarks, footnotes, and small print. Do not skip anything readable.\n"
+    "- Reading order is top-to-bottom, left-to-right. For multi-column "
+    "layouts, finish one column before starting the next.\n"
+    "- Preserve structure with Markdown: tables as GitHub-style pipe "
+    "tables; code or terminal output inside ``` fenced blocks with the "
+    "original indentation; bulleted lists with \"- \"; numbered lists with "
+    "\"1. \"; headings with \"#\" levels when the visual hierarchy is clear.\n"
+    "- Join soft-wrapped lines within a paragraph into one line; keep real "
+    "line breaks between paragraphs, list items, and distinct blocks.\n"
+    "- Keep the source script and original casing — do not transliterate, "
+    "translate, or paraphrase. Preserve punctuation and special characters "
+    "exactly.\n"
+    "- Render math with LaTeX inside $...$ or $$...$$ delimiters.\n"
+    "- Output ONLY the recognised text. No preamble, no commentary, no "
+    "surrounding quotes, no \"Here is the text\" phrasing.\n"
+    "- If the image contains no readable text, respond with an empty "
+    "message."
 )
 
 # Sent alongside the image in the user turn — pairs with the OCR system

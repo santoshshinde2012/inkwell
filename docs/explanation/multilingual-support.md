@@ -92,6 +92,36 @@ This keeps the [privacy posture](../privacy.md) intact — the backend
 still logs only metadata and never prompt content — while giving agents
 the auditable record the workflow needs.
 
+## Default action is context-aware
+
+The Reply / Translate / Grammar / Rewrite picker doesn't start blank —
+when new text arrives in the side panel (selection capture, OCR
+finish, handoff from the in-page popover) or in the popover itself
+(mount on a focused field or page selection), Inkwell picks a default
+action based on the text's **language** and its **source surface**:
+
+| Source | Non-English | English |
+| --- | --- | --- |
+| `field` — textarea, `<input>`, contenteditable | `translate` | `grammar` |
+| `page` — page selection, OCR result, popover handoff | `translate` | `reply` |
+
+The intent: a foreign-language string is almost always something the
+agent wants to read in their working language; English text inside
+their own draft is almost always something to fix; English text from
+a page is almost always something to respond to. The agent can still
+override the choice manually — auto-apply only fires when fresh
+context arrives.
+
+Detection prefers Chrome's CLD via `chrome.i18n.detectLanguage`
+(parallelized with the popover's storage round-trips so first paint
+already has the right answer) and falls back to a small Latin-script
+heuristic when CLD bails on short or low-confidence text. The rule
+and both detectors live in
+[`extension/src/lib/default-action.ts`](../../frontend/packages/extension/src/lib/default-action.ts).
+The `GET_SELECTION` message contract was extended to return
+`{ text, source: "field" | "page" }` so the side panel knows whether
+the selection came from a draft or from page content.
+
 ## Agent preferences
 
 The options "Languages" tab stores a **working language** (the default

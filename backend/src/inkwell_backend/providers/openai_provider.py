@@ -108,6 +108,13 @@ async def _recognize(args: VisionArgs) -> VisionResult:
 
     data_url = f"data:{args.mime_type};base64,{args.image_base64}"
 
+    # The message list is duplicated between the non-streaming path
+    # below and ``_recognize_stream`` above on purpose: typing the
+    # message-list literal inline at the call site is the only way the
+    # OpenAI SDK's overloads pick up the right shape (factoring it into
+    # a helper widens the type to ``dict[str, object]`` and loses both
+    # the streaming-vs-non-streaming overload resolution and the wire
+    # type-checking).
     completion = await client.chat.completions.create(
         model=args.model,
         # OCR responses can be long for dense screenshots — give them
@@ -134,6 +141,54 @@ async def _recognize(args: VisionArgs) -> VisionResult:
     raw = completion.choices[0].message.content if completion.choices else ""
     text = (raw or "").strip() if isinstance(raw, str) else ""
     return VisionResult(text=text, model=completion.model or args.model)
+
+
+async def _recognize_stream(args: VisionArgs) -> AsyncIterator[str]:
+    """Stream a vision call's content deltas as plain text chunks.
+
+    Mirrors :func:`_recognize`'s prompt shape exactly — only ``stream=
+    True`` and the iteration loop differ — so a streamed call and a
+    non-streamed call produce equivalent text for the same image. See
+    the note in ``_recognize`` for why the message list is duplicated.
+    """
+    client = get_openai_client()
+
+    data_url = f"data:{args.mime_type};base64,{args.image_base64}"
+
+    stream = await client.chat.completions.create(
+        model=args.model,
+        stream=True,
+        max_tokens=MAX_OCR_RESPONSE_TOKENS,
+        temperature=_OCR_TEMPERATURE,
+        messages=[
+            {"role": "system", "content": args.system},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": args.user},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": data_url, "detail": "high"},
+                    },
+                ],
+            },
+        ],
+        extra_headers=build_request_headers(args.trace_id),
+    )
+
+    try:
+        async for chunk in stream:
+            if not chunk.choices:
+                # Usage-only frame at the end of the stream; vision OCR
+                # currently has no usage consumer, so just skip it.
+                continue
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta
+    finally:
+        # Free the upstream HTTP connection if the caller breaks out of
+        # the iterator early (client disconnect, error in the consumer).
+        await stream.close()
 
 
 # ---------------------------------------------------------------------------
@@ -164,6 +219,9 @@ class OpenAiProvider:
 
     async def recognize_text(self, args: VisionArgs) -> VisionResult:
         return await _recognize(args)
+
+    def stream_recognize_text(self, args: VisionArgs) -> AsyncIterator[str]:
+        return _recognize_stream(args)
 
     async def aclose(self) -> None:
         await _aclose_openai_clients()

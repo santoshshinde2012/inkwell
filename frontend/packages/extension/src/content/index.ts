@@ -54,6 +54,25 @@ const elementOf = (node: Node | null): HTMLElement | null => {
  * and the parent restores the field trigger if the user clears the
  * selection while still focused in the editor (see `evaluateSelection`).
  */
+/** True when the element (or any ancestor) is an editable text host —
+ *  an <input>/<textarea> or anything in a contenteditable subtree.
+ *  Used to tag the GET_SELECTION reply so the side panel can pick a
+ *  context-aware default action (drafts → grammar, page → reply). */
+const isInEditableHost = (el: Element): boolean => {
+  if (el.closest("textarea, input")) return true;
+  // ``isContentEditable`` walks ancestors itself for contenteditable
+  // inheritance, so checking the element directly is enough.
+  if (el instanceof HTMLElement && el.isContentEditable) return true;
+  // Some rich editors mount their editable region as a descendant of
+  // the anchor node; walk up explicitly to be safe.
+  let cur: Element | null = el;
+  while (cur) {
+    if (cur instanceof HTMLElement && cur.isContentEditable) return true;
+    cur = cur.parentElement;
+  }
+  return false;
+};
+
 const getViableSelection = (): { text: string; rect: DOMRect } | null => {
   const sel = window.getSelection();
   if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
@@ -231,16 +250,18 @@ const init = async (): Promise<void> => {
       // demand. We reply synchronously with the raw selected text — never
       // anything from inside our own UI, which the side panel doesn't
       // need to know about.
+      //
+      // We also tag the selection's surface so the side panel can pick
+      // a context-aware default action (textarea → grammar, page →
+      // reply). "field" covers <input>/<textarea>/contenteditable;
+      // anything else is "page".
       const sel = window.getSelection();
       const raw = sel ? sel.toString() : "";
-      const anchor = sel?.anchorNode;
-      const inOurUi =
-        anchor instanceof Node &&
-        (anchor.nodeType === Node.ELEMENT_NODE
-          ? (anchor as Element)
-          : anchor.parentElement
-        )?.closest(`[${ROOT_ATTR}]`);
-      sendResponse({ text: inOurUi ? "" : raw.trim() });
+      const anchorEl = elementOf(sel?.anchorNode ?? null);
+      const inOurUi = anchorEl?.closest(`[${ROOT_ATTR}]`);
+      const text = inOurUi ? "" : raw.trim();
+      const source: "field" | "page" = anchorEl && isInEditableHost(anchorEl) ? "field" : "page";
+      sendResponse({ text, source });
       return false;
     }
     return false;

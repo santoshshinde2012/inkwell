@@ -50,7 +50,11 @@ import { detectLanguage } from "../lib/languages";
 import { historyStore, type NewHistoryEntry } from "../lib/history";
 import { loadModelCatalog } from "../lib/models";
 import { makeUuid } from "../lib/uuid";
-import { writeText } from "./editable";
+import { readText, writeText } from "./editable";
+import {
+  decideDefaultActionWithDetection,
+  type DefaultActionSource,
+} from "../lib/default-action";
 import type { SiteAdapter } from "./adapters";
 
 import {
@@ -194,21 +198,45 @@ export const mountPopover = async ({
   adapter,
   onClose,
 }: MountArgs): Promise<void> => {
+  // Read the source's text synchronously so language detection can
+  // run in parallel with the storage round-trips below — saves us an
+  // event-loop turn between first paint and the language-aware initial
+  // action. ``readText`` handles <input>/<textarea>/contenteditable
+  // uniformly; selection mode already carries the text on the source.
+  const initialActionContextText: string =
+    source.kind === "selection"
+      ? source.text
+      : source.kind === "field"
+        ? readText(source.element)
+        : "";
+  const initialActionSource: DefaultActionSource = source.kind === "field" ? "field" : "page";
+
   // Load every piece of persisted UI state in parallel before any DOM is
   // built, so the popover paints in its final shape — correct action,
   // tone, model, language pair, working-language defaults, and expanded/
   // collapsed disclosure — with no flicker on first frame. The combined
   // chrome.storage.local round-trip resolves in a handful of milliseconds,
   // fast enough to keep the open feeling instant.
-  const [initialOptsExpanded, lastUsed, settings, modelCatalog] = await Promise.all([
-    loadOptsExpanded(),
-    loadLastUsed(),
-    localStore.getAll().catch(() => null),
-    // Read from the cache only — content scripts run in arbitrary
-    // page origins and can't be trusted to call the backend. The
-    // background worker keeps the cache fresh on its own schedule.
-    loadModelCatalog(),
-  ]);
+  //
+  // CLD detection joins the parallel barrier so the initial action
+  // can be picked based on Chrome's actual language guess rather than
+  // a Latin-script heuristic that would misread short French / Spanish
+  // / German text as English. Detection bails on short / low-
+  // confidence text by resolving to null, which the decider folds
+  // back into the heuristic — no extra branching here.
+  const [initialOptsExpanded, lastUsed, settings, modelCatalog, initialDetection] =
+    await Promise.all([
+      loadOptsExpanded(),
+      loadLastUsed(),
+      localStore.getAll().catch(() => null),
+      // Read from the cache only — content scripts run in arbitrary
+      // page origins and can't be trusted to call the backend. The
+      // background worker keeps the cache fresh on its own schedule.
+      loadModelCatalog(),
+      initialActionContextText.trim()
+        ? detectLanguage(initialActionContextText).catch(() => null)
+        : Promise.resolve(null),
+    ]);
   const modelOptions: readonly RemoteModelInfo[] = modelCatalog.models;
 
   // field mode inserts the result back; selection/blank are copy-only.
@@ -229,7 +257,27 @@ export const mountPopover = async ({
   const workingLanguage: LanguageId = settings?.workingLanguage ?? DEFAULT_WORKING_LANGUAGE;
   const frequentLanguages: LanguageId[] = settings?.frequentLanguages ?? [];
 
-  const initialAction: Action = isValidAction(lastUsed.action) ? lastUsed.action : "reply";
+  // Context-aware initial action — when the popover opens with text
+  // already in scope (field with a draft, or page selection), pick a
+  // default that matches the surface and language:
+  //   non-English             → "translate"
+  //   English from a field    → "grammar"
+  //   English from a selection → "reply"
+  //
+  // We prefer Chrome's CLD verdict (fetched in parallel above) and
+  // fall back to a sync Latin-script heuristic for short or
+  // low-confidence text. Blank sources, or fields the user hasn't
+  // typed into yet, keep ``lastUsed.action`` so a returning user
+  // picks up where they left off.
+  const initialAction: Action = initialActionContextText.trim()
+    ? decideDefaultActionWithDetection({
+        text: initialActionContextText,
+        source: initialActionSource,
+        detection: initialDetection,
+      })
+    : isValidAction(lastUsed.action)
+      ? lastUsed.action
+      : "reply";
   const initialTone: TonePreset = isValidTone(lastUsed.tone) ? lastUsed.tone : defaultTone;
   // `lastUsed.model` only counts when it exists in the live catalog —
   // an id retired upstream shouldn't keep getting sent.

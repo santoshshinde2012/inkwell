@@ -142,6 +142,21 @@ class CompletionProvider(Protocol):
         """
         ...
 
+    def stream_recognize_text(self, args: VisionArgs) -> AsyncIterator[str]:
+        """Streaming variant of :meth:`recognize_text` — yields text
+        deltas as the model produces them.
+
+        Used by the side panel's progressive-display UX: tokens appear
+        as soon as the model starts emitting them, instead of after the
+        whole response is buffered. The async iterator MAY yield empty
+        strings (heartbeat-like ticks); the caller filters those.
+
+        Implementations are responsible for closing their upstream
+        connection when the iterator is cancelled (the service layer
+        calls ``aclose()`` on early break).
+        """
+        ...
+
     async def aclose(self) -> None:
         """Release any process-wide resources (HTTP pools, etc.).
 

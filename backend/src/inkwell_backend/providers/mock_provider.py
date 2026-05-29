@@ -67,6 +67,25 @@ async def _mock_stream(args: ProviderCompletionArgs) -> AsyncIterator[Completion
     )
 
 
+# Split into a few chunks so the streaming path looks realistic in dev,
+# but short enough that tests don't add measurable wall-clock time.
+_MOCK_OCR_CHUNKS: tuple[str, ...] = (
+    "[mock OCR text — ",
+    "set OPENAI_API_KEY in backend/.env ",
+    "to enable real recognition]",
+)
+
+
+async def _mock_recognize_stream(_: VisionArgs) -> AsyncIterator[str]:
+    """Stream the mock OCR placeholder in a few delta-sized chunks."""
+    for chunk in _MOCK_OCR_CHUNKS:
+        yield chunk
+        # Tiny delay so a streaming consumer actually sees multiple
+        # frames. Tests that don't want the delay can monkey-patch
+        # ``asyncio.sleep`` the same way the completion stream does.
+        await asyncio.sleep(0.01)
+
+
 class MockProvider:
     """The deterministic fallback used when no real provider is configured.
 
@@ -93,6 +112,9 @@ class MockProvider:
         # placeholder string itself is intentionally bracketed so a
         # downstream UI can detect and badge it if desired.
         return VisionResult(text=MOCK_OCR_TEXT, model=f"{args.model} (mock)")
+
+    def stream_recognize_text(self, args: VisionArgs) -> AsyncIterator[str]:
+        return _mock_recognize_stream(args)
 
     async def aclose(self) -> None:
         """Mock holds no resources — no-op."""
