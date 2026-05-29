@@ -10,6 +10,7 @@
 // Actions live as small floating chips in the top-right of the card,
 // surfaced only when a complete result is on screen.
 
+import { memo } from "react";
 import type { JSX } from "react";
 import { CheckIcon, CopyIcon, RegenerateIcon } from "../icons";
 import type { ActionTheme } from "../actionTheme";
@@ -24,7 +25,7 @@ export interface ResultCardProps {
   onRegenerate: () => void;
 }
 
-export function ResultCard({
+function ResultCardImpl({
   theme,
   preview,
   streaming,
@@ -75,6 +76,15 @@ export function ResultCard({
     </section>
   );
 }
+
+// Memoised so unrelated state changes in AssistantView (typing in the
+// textarea, instruction field edits, options-sheet toggles) don't
+// force the result region to re-render. Re-renders still happen on
+// every token while streaming because `preview` is a primitive that
+// changes — that's intentional; the transition wrapper in
+// `useStreamingResult` already deprioritises those repaints so they
+// can't block typing.
+export const ResultCard = memo(ResultCardImpl);
 
 // ---------------------------------------------------------------------------
 // Subcomponents

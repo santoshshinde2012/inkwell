@@ -16,7 +16,7 @@
 //   - Layout pieces (TopBar / ActionSegments / HeroEmptyState / ResultCard
 //     / ChatInputBar) are presentational and unaware of streaming.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type Action,
   type CompleteCancelMessage,
@@ -31,7 +31,13 @@ import type { NewHistoryEntry } from "../../lib/history";
 import { OptionsSheet, useOptionsSummary } from "../OptionsSheet";
 import { ACTION_THEMES } from "../actionTheme";
 import { type BackendStatus } from "../../lib/backend";
-import { consumeHandoff, HANDOFF_KEY } from "../../lib/ui-state";
+import {
+  clearAssistantDraft,
+  consumeHandoff,
+  HANDOFF_KEY,
+  loadAssistantDraft,
+  saveAssistantDraft,
+} from "../../lib/ui-state";
 import { useStorageChange } from "../../lib/useStorageChange";
 
 import { ActionSegments } from "./ActionSegments";
@@ -52,6 +58,7 @@ import {
 } from "./captureSelection";
 import { extractTextFromImage, isImageBlob, OcrError, type OcrProgress } from "../../lib/ocr";
 import { decideDefaultAction, type DefaultActionSource } from "../../lib/default-action";
+import { useToast } from "../Toast";
 
 export interface AssistantViewProps {
   backendStatus: BackendStatus;
@@ -73,10 +80,44 @@ export function AssistantView({
     initialBackendUrl: backendUrl,
   });
   const result = useStreamingResult();
+  const toast = useToast();
 
   // Per-input local state — small and view-specific, not worth hoisting.
   const [inputText, setInputText] = useState("");
   const [instruction, setInstruction] = useState("");
+
+  // Draft autosave. We restore once on mount (suppressing the matching
+  // save so the restore itself doesn't bounce back through the
+  // persistence path), then debounce-save every change. The `generate`
+  // handler below calls `clearAssistantDraft()` on a successful send so
+  // the next panel open starts fresh.
+  const draftHydratedRef = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
+    void loadAssistantDraft().then((d) => {
+      if (cancelled || !d) {
+        draftHydratedRef.current = true;
+        return;
+      }
+      // Only restore fields the user hasn't already filled in this
+      // session — a popover handoff or selection capture can race
+      // ahead of the storage read on a slow disk, and we don't want
+      // the older draft to clobber the fresher context.
+      setInputText((cur) => (cur ? cur : d.inputText));
+      setInstruction((cur) => (cur ? cur : d.instruction));
+      draftHydratedRef.current = true;
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  useEffect(() => {
+    if (!draftHydratedRef.current) return;
+    const t = window.setTimeout(() => {
+      saveAssistantDraft({ inputText, instruction });
+    }, 500);
+    return () => window.clearTimeout(t);
+  }, [inputText, instruction]);
 
   // OCR state. `ocrStatus` is shown in the meta line while the image is
   // uploading / waiting on the backend's vision model. `dragOver` tracks
@@ -178,6 +219,9 @@ export function AssistantView({
         // (not the user's draft), so an English result defaults to
         // "reply" and a non-English result to "translate".
         void applyDefaultAction(text, "page");
+        // Confirm the extraction landed — for long screenshots the
+        // textarea append happens far from where the user is looking.
+        toast.success(`Extracted ${text.length.toLocaleString()} characters`);
       } catch (err) {
         // Roll back any text the stream may have written so a failed
         // OCR doesn't leave the textarea in a half-extracted state.
@@ -193,7 +237,7 @@ export function AssistantView({
         setOcrStatus(null);
       }
     },
-    [ocrStatus, result, settings.backend.url, applyDefaultAction],
+    [ocrStatus, result, settings.backend.url, applyDefaultAction, toast],
   );
 
   // -------------------------------------------------------------------------
@@ -359,6 +403,10 @@ export function AssistantView({
     };
 
     result.beginStream(streamId, pendingHistory);
+    // The draft is "spent" the moment we kick off generation — clear
+    // it so a panel close mid-stream doesn't bring back text the user
+    // already committed.
+    clearAssistantDraft();
 
     const msg: CompleteStartMessage = {
       type: MESSAGE_TYPES.COMPLETE_START,
@@ -420,6 +468,39 @@ export function AssistantView({
     model: settings.model,
     instruction,
   });
+
+  // Stable callback refs so the memoised ChatInputBar / ResultCard /
+  // ActionSegments children can actually skip re-rendering when an
+  // unrelated piece of state (a keystroke, a streaming token) bumps
+  // AssistantView. Each one wraps an already-stable inner reference
+  // (useCallback'd generate / captureSelection / runOcr, the
+  // referentially-stable setInputText) so the dep arrays here are
+  // narrow.
+  const handleGenerate = useCallback((): void => {
+    void generate();
+  }, [generate]);
+  const handleCancel = cancel;
+  const handleCapture = useCallback((): void => {
+    void captureSelection();
+  }, [captureSelection]);
+  const handleImage = useCallback(
+    (b: Blob): void => {
+      void runOcr(b);
+    },
+    [runOcr],
+  );
+  const handleOpenOptions = useCallback((): void => {
+    settings.setSheetOpen(true);
+  }, [settings]);
+  const handleCopy = useCallback((): void => {
+    void result.copy().then((ok) => {
+      if (ok) toast.success("Copied to clipboard");
+      else toast.error("Couldn't copy. Select the text and copy manually.");
+    });
+  }, [result, toast]);
+  const handleDismissError = useCallback((): void => {
+    result.clearError();
+  }, [result]);
 
   // `hasResult` no longer needs to gate on `!result.error` — errors
   // render as a banner above the main area now, not as a takeover.
@@ -489,7 +570,7 @@ export function AssistantView({
           <ErrorBanner
             message={result.error}
             action={result.errorAction}
-            onDismiss={() => result.clearError()}
+            onDismiss={handleDismissError}
           />
         )}
         {hasContent ? (
@@ -499,8 +580,8 @@ export function AssistantView({
             streaming={result.streaming}
             canCopy={!!result.preview}
             copied={result.copied}
-            onCopy={() => void result.copy()}
-            onRegenerate={() => void generate()}
+            onCopy={handleCopy}
+            onRegenerate={handleGenerate}
           />
         ) : (
           <HeroEmptyState action={settings.action} theme={theme} />
@@ -512,16 +593,16 @@ export function AssistantView({
         placeholder={SOURCE_PLACEHOLDERS[settings.action]}
         inputText={inputText}
         onInputChange={setInputText}
-        onCapture={() => void captureSelection()}
-        onImage={(b) => void runOcr(b)}
+        onCapture={handleCapture}
+        onImage={handleImage}
         ocrBusy={ocrStatus !== null}
-        onOpenOptions={() => settings.setSheetOpen(true)}
+        onOpenOptions={handleOpenOptions}
         optsSummary={optsSummary}
         streaming={result.streaming}
         hasResult={hasResult}
         meta={metaText}
-        onGenerate={() => void generate()}
-        onCancel={cancel}
+        onGenerate={handleGenerate}
+        onCancel={handleCancel}
       />
 
       {dragDepth > 0 && (

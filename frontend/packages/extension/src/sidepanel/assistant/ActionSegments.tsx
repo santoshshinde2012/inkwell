@@ -3,6 +3,7 @@
 // active state lights up the same hue the user will see on the result
 // border and the primary Send button.
 
+import { memo } from "react";
 import type { JSX } from "react";
 import type { Action } from "@inkwell/shared";
 import { ACTION_THEMES } from "../actionTheme";
@@ -15,7 +16,7 @@ export interface ActionSegmentsProps {
 
 const ITEMS: Action[] = ["reply", "translate", "grammar", "rewrite"];
 
-export function ActionSegments({ current, onChange }: ActionSegmentsProps): JSX.Element {
+function ActionSegmentsImpl({ current, onChange }: ActionSegmentsProps): JSX.Element {
   return (
     <div
       role="tablist"
@@ -56,3 +57,10 @@ export function ActionSegments({ current, onChange }: ActionSegmentsProps): JSX.
     </div>
   );
 }
+
+// Memoised so it doesn't re-render on every keystroke in the textarea
+// — props are `current` (settings.action) and `onChange` (a useCallback
+// in the parent). The parent must keep `onChange` referentially stable
+// for memoisation to actually pay off; that's already the case with
+// the `handleActionChange` useCallback in AssistantView.
+export const ActionSegments = memo(ActionSegmentsImpl);

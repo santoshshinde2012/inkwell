@@ -14,7 +14,7 @@
 //     filters messages so we don't react to a previous (cancelled)
 //     stream.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 import { MESSAGE_TYPES } from "@inkwell/shared";
 import { historyStore, type NewHistoryEntry } from "../../lib/history";
 import { KBD } from "./constants";
@@ -51,8 +51,11 @@ export interface UseStreamingResult {
   /** Reset to an idle state with a fresh meta line (default: keyboard hint). */
   resetIdle: (meta?: string) => void;
 
-  /** Copy current preview to the clipboard with a brief "Copied" toast. */
-  copy: () => Promise<void>;
+  /** Copy current preview to the clipboard. Returns true on success,
+   *  false when the clipboard write failed (so the caller can surface
+   *  a toast or other feedback). The inline `copied` flag flips on
+   *  success regardless of how the caller chooses to confirm. */
+  copy: () => Promise<boolean>;
 }
 
 export function useStreamingResult(): UseStreamingResult {
@@ -93,7 +96,13 @@ export function useStreamingResult(): UseStreamingResult {
             // append outside the state updater avoids the double-fire
             // that an updater function would trigger under StrictMode.
             previewRef.current += delta;
-            setPreview((p) => p + delta);
+            // Mark the preview repaint as a transition so React can
+            // interrupt it for higher-priority input events. Without
+            // this, typing in the textarea fights for time slices
+            // with the streaming result repaint on every token.
+            startTransition(() => {
+              setPreview((p) => p + delta);
+            });
           }
           return false;
         case MESSAGE_TYPES.COMPLETE_USAGE: {
@@ -185,9 +194,9 @@ export function useStreamingResult(): UseStreamingResult {
     setUsageMeta(meta ?? `Press ${KBD} to generate`);
   }, []);
 
-  const copy = useCallback(async (): Promise<void> => {
+  const copy = useCallback(async (): Promise<boolean> => {
     const text = previewRef.current;
-    if (!text) return;
+    if (!text) return false;
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
@@ -198,8 +207,12 @@ export function useStreamingResult(): UseStreamingResult {
         setCopied(false);
         copiedTimerRef.current = null;
       }, 1600);
+      return true;
     } catch {
-      setError("Couldn't copy. Select the text below and copy manually.");
+      // Don't push into result.error here — that banner is reserved
+      // for streaming / backend failures. Returning false lets the
+      // caller decide whether to toast, show inline guidance, etc.
+      return false;
     }
   }, []);
 

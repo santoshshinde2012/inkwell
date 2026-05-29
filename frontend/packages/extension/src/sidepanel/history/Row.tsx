@@ -50,7 +50,19 @@ export interface RowProps {
 
 export function Row({ entry, expanded, onToggle, onAskDelete }: RowProps): JSX.Element {
   return (
-    <li className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/60 transition-colors hover:border-zinc-700">
+    // `content-visibility: auto` is the native browser equivalent of
+    // hand-rolled list virtualization: the browser skips layout +
+    // paint of rows that are off-screen, dropping the scroll cost of
+    // a 250-entry list to roughly the cost of the visible rows alone.
+    // ``contain-intrinsic-size`` reserves an approximate height so
+    // the scrollbar geometry stays stable while rows are still
+    // measured. Tuned ~72 px for a collapsed row; an expanded row
+    // grows past that and the browser re-measures on demand. Works in
+    // every Chromium that supports MV3 (the side panel API needs
+    // Chrome 114+, and content-visibility ships from 85). The Tailwind
+    // arbitrary-value classes avoid a global CSS edit just for this
+    // one rule.
+    <li className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/60 transition-colors [content-visibility:auto] [contain-intrinsic-size:72px] hover:border-zinc-700">
       <CollapsedHeader entry={entry} expanded={expanded} onToggle={onToggle} />
       {expanded && <ExpandedDetail entry={entry} onAskDelete={onAskDelete} />}
     </li>

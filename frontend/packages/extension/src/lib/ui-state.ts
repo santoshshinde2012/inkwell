@@ -213,3 +213,82 @@ export const stashHandoff = async (h: Omit<Handoff, "createdAt">): Promise<void>
     /* storage unavailable — non-fatal */
   }
 };
+
+// ---------------------------------------------------------------------------
+// Assistant draft autosave
+// ---------------------------------------------------------------------------
+//
+// Persist what the user has typed into the side panel's textarea +
+// instruction field so a panel close (or browser restart) doesn't
+// silently lose their work. Cleared the moment they send. We keep the
+// shape narrow and validated on load — a corrupted record falls back
+// to an empty draft rather than throwing.
+
+const DRAFT_KEY = "ui.assistantDraft";
+/** Drafts older than this are dropped on read. A user who hasn't
+ *  touched the panel for two weeks is almost certainly past the point
+ *  where their last in-progress draft is still relevant; restoring it
+ *  would feel surprising. */
+export const DRAFT_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
+
+export interface AssistantDraft {
+  inputText: string;
+  instruction: string;
+  updatedAt: number;
+}
+
+const isDraft = (v: unknown): v is AssistantDraft =>
+  !!v &&
+  typeof v === "object" &&
+  typeof (v as { inputText?: unknown }).inputText === "string" &&
+  typeof (v as { instruction?: unknown }).instruction === "string" &&
+  typeof (v as { updatedAt?: unknown }).updatedAt === "number";
+
+/** Read the persisted draft, or null when nothing is saved, the
+ *  record is malformed, or it's past {@link DRAFT_MAX_AGE_MS}. */
+export const loadAssistantDraft = (): Promise<AssistantDraft | null> => {
+  return new Promise((resolve) => {
+    try {
+      chrome.storage.local.get(DRAFT_KEY, (result) => {
+        const v = result?.[DRAFT_KEY];
+        if (!isDraft(v)) return resolve(null);
+        if (Date.now() - v.updatedAt > DRAFT_MAX_AGE_MS) {
+          void chrome.storage.local.remove(DRAFT_KEY);
+          return resolve(null);
+        }
+        resolve(v);
+      });
+    } catch {
+      resolve(null);
+    }
+  });
+};
+
+/** Persist the current draft. The Assistant view debounces calls to
+ *  this so storage isn't written on every keystroke. Empty drafts
+ *  remove the key instead of saving an empty record, so a stale
+ *  record can't reappear after the user cleared the field. */
+export const saveAssistantDraft = (
+  draft: Omit<AssistantDraft, "updatedAt">,
+): void => {
+  try {
+    if (!draft.inputText && !draft.instruction) {
+      void chrome.storage.local.remove(DRAFT_KEY);
+      return;
+    }
+    const record: AssistantDraft = { ...draft, updatedAt: Date.now() };
+    void chrome.storage.local.set({ [DRAFT_KEY]: record });
+  } catch {
+    /* storage unavailable — non-fatal */
+  }
+};
+
+/** Drop the persisted draft. Called when the user sends, so the
+ *  next panel open starts fresh. */
+export const clearAssistantDraft = (): void => {
+  try {
+    void chrome.storage.local.remove(DRAFT_KEY);
+  } catch {
+    /* storage unavailable — non-fatal */
+  }
+};

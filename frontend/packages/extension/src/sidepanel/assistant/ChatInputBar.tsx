@@ -10,7 +10,7 @@
 //
 // Purely presentational: the parent owns every state value and callback.
 
-import { useRef, type ClipboardEvent, type JSX } from "react";
+import { memo, useRef, type ClipboardEvent, type JSX } from "react";
 import {
   ImageIcon,
   RegenerateIcon,
@@ -47,7 +47,7 @@ export interface ChatInputBarProps {
 
 type PrimaryMode = "stop" | "regenerate" | "generate";
 
-export function ChatInputBar({
+function ChatInputBarImpl({
   theme,
   placeholder,
   inputText,
@@ -138,6 +138,12 @@ export function ChatInputBar({
     </footer>
   );
 }
+
+// Memoised so unrelated re-renders in AssistantView (e.g. settings
+// hydrating, OCR progress label changing) don't bounce through the
+// input bar. Keystrokes still re-render — `inputText` is the prop
+// being typed — but that's the expected cost.
+export const ChatInputBar = memo(ChatInputBarImpl);
 
 // ---------------------------------------------------------------------------
 // Internals

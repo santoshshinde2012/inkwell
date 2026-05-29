@@ -164,6 +164,8 @@ export function Drawer({
               onClose();
             }}
           />
+
+          <ShortcutsHint />
         </div>
 
         <Footer />
@@ -294,6 +296,49 @@ function BrandCTA({ onClick }: { onClick: () => void }): JSX.Element {
       Open advanced settings
       <ExternalLinkIcon size={13} />
     </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Shortcuts hint — surfaces the otherwise-hidden Cmd/Ctrl+B affordance
+// so users discover that the drawer they're looking at has a keyboard
+// shortcut. The drawer is the natural place for this — by the time
+// they've opened it they've already used the hamburger; the next time
+// the shortcut saves them a tap.
+// ---------------------------------------------------------------------------
+
+const IS_MAC = navigator.platform.includes("Mac");
+const TOGGLE_DRAWER_SHORTCUT = IS_MAC ? "⌘B" : "Ctrl+B";
+const GENERATE_SHORTCUT = IS_MAC ? "⌘↵" : "Ctrl+↵";
+
+function ShortcutsHint(): JSX.Element {
+  return (
+    <section
+      aria-label="Keyboard shortcuts"
+      className="mt-5 rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-3"
+    >
+      <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+        Shortcuts
+      </h3>
+      <ul className="space-y-1.5 text-[11.5px] text-zinc-400">
+        <li className="flex items-center justify-between gap-3">
+          <span>Toggle this menu</span>
+          <ShortcutKey label={TOGGLE_DRAWER_SHORTCUT} />
+        </li>
+        <li className="flex items-center justify-between gap-3">
+          <span>Send / regenerate</span>
+          <ShortcutKey label={GENERATE_SHORTCUT} />
+        </li>
+      </ul>
+    </section>
+  );
+}
+
+function ShortcutKey({ label }: { label: string }): JSX.Element {
+  return (
+    <kbd className="inline-flex items-center justify-center rounded-md border border-zinc-700 bg-zinc-950 px-1.5 py-0.5 font-mono text-[10.5px] font-medium text-zinc-200">
+      {label}
+    </kbd>
   );
 }
 

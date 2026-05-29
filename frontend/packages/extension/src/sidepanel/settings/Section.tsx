@@ -8,7 +8,6 @@
 
 import type { JSX } from "react";
 import type { LocalSettings } from "@inkwell/shared";
-import { CheckIcon } from "../icons";
 
 /** Patch signature passed into each section. */
 export type Patch = (next: Partial<LocalSettings>) => void;
@@ -73,22 +72,6 @@ export function FieldLabel({
       </span>
       {children}
     </label>
-  );
-}
-
-export function Toast({ message }: { message: string }): JSX.Element {
-  return (
-    <div
-      role="status"
-      className="pointer-events-none absolute inset-x-0 bottom-3 z-50 flex justify-center"
-    >
-      <div className="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-zinc-100 px-3.5 py-1.5 text-[11px] font-medium text-zinc-900 shadow-lg shadow-black/40">
-        <span className="text-emerald-600" aria-hidden="true">
-          <CheckIcon size={12} />
-        </span>
-        {message}
-      </div>
-    </div>
   );
 }
 
