@@ -16,6 +16,7 @@ The structure follows the **[Diátaxis](https://diataxis.fr)** framework.
 | --- | --- |
 | Get the project running locally | [Getting started](./getting-started.md) |
 | Develop one layer at a time | [How-to: Local development](./how-to/local-development.md) |
+| Deploy to production | [Production blueprint](./production-blueprint.md) |
 | Understand how the system fits together | [Reference: Architecture](./reference/architecture.md) |
 | See the API contract | [Reference: API](./reference/api.md) |
 | Point the extension at your own backend | [How-to: Use your own backend](./how-to/use-your-own-backend.md) |
@@ -31,6 +32,7 @@ The structure follows the **[Diátaxis](https://diataxis.fr)** framework.
 docs/
 ├── README.md                     ← you are here
 ├── getting-started.md            tutorial — clone to working extension
+├── production-blueprint.md       deploy + operate in production
 ├── security.md                   threat model + reporting policy
 ├── privacy.md                    data-handling policy
 ├── contributing.md               PR / issue / code-style guide
