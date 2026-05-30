@@ -36,6 +36,8 @@ const INSTRUCTION_PLACEHOLDERS: Record<Action, string> = {
   translate: "Optional: extra direction (e.g. “keep it formal”).",
   grammar: "Optional: extra direction (e.g. “keep the casual tone”).",
   rewrite: "Describe what to write, or how to rewrite the text. No text? Then this is your brief.",
+  summarize: "Optional: focus the summary (e.g. “just the action items”).",
+  explain: "Optional: focus the explanation (e.g. “explain the technical terms”).",
 };
 
 export interface OptionsSheetProps {

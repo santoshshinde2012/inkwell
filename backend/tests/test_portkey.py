@@ -17,8 +17,19 @@ import pytest
 from pydantic import ValidationError
 
 from inkwell_backend import settings as settings_mod
+from inkwell_backend.domain.schemas import CompleteRequest
 from inkwell_backend.providers import openai_client
 from inkwell_backend.providers.openai_client import build_request_headers
+
+_PORTKEY_MODEL_SLUG = "@bedrock-aifoundry-use1-001/us.anthropic.claude-opus-4-6-v1"
+
+
+def _reply_payload(model: str) -> dict[str, object]:
+    return {
+        "action": "reply",
+        "context": {"post": {"text": "Are we still on for Friday?"}},
+        "model": model,
+    }
 
 
 @pytest.fixture(autouse=True)
@@ -131,15 +142,32 @@ def test_has_openai_via_portkey_forwarded_key() -> None:
     assert s.has_openai is True
 
 
-def test_has_openai_false_when_neither_path_configured() -> None:
-    """Portkey on but no virtual key and no OpenAI key — mock path."""
+def test_has_openai_via_portkey_model_catalog() -> None:
+    """Portkey on with only the project key (no virtual key, no OpenAI
+    key) is still a real upstream: routing happens via a model-catalog
+    slug, so we must NOT fall back to the mock."""
     s = _build_settings(
         use_portkey=True,
         portkey_api_key="pk-test",
         portkey_virtual_key=None,
         openai_api_key=None,
     )
-    assert s.has_openai is False
+    assert s.has_openai is True
+
+
+def test_blank_portkey_optionals_normalise_to_none() -> None:
+    """A blank env value (``PORTKEY_PROVIDER=``) is treated as unset so
+    it never reaches the gateway as an empty header."""
+    s = _build_settings(
+        use_portkey=True,
+        portkey_api_key="pk-test",
+        portkey_provider="  ",
+        portkey_virtual_key="",
+        portkey_config="",
+    )
+    assert s.portkey_provider is None
+    assert s.portkey_virtual_key is None
+    assert s.portkey_config is None
 
 
 # ---------------------------------------------------------------------------
@@ -167,11 +195,13 @@ def test_get_openai_client_portkey_path_with_virtual_key(
 ) -> None:
     """Portkey ON with a virtual key: client targets the gateway, sends
     the virtual-key header, and uses the placeholder api_key (the real
-    upstream credential lives in Portkey's vault)."""
+    upstream credential lives in Portkey's vault). No provider header is
+    sent — the virtual key already pins the upstream."""
     monkeypatch.setenv("USE_PORTKEY", "true")
     monkeypatch.setenv("PORTKEY_API_KEY", "pk-test")
     monkeypatch.setenv("PORTKEY_VIRTUAL_KEY", "vk-openai")
     monkeypatch.setenv("PORTKEY_CONFIG", "cfg-abc")
+    monkeypatch.setenv("PORTKEY_PROVIDER", "")
     monkeypatch.setenv("OPENAI_API_KEY", "")
     settings_mod.get_settings.cache_clear()
 
@@ -179,12 +209,54 @@ def test_get_openai_client_portkey_path_with_virtual_key(
     assert "api.portkey.ai" in str(client.base_url)
     headers = {k.lower(): v for k, v in client.default_headers.items()}
     assert headers["x-portkey-api-key"] == "pk-test"
-    assert headers["x-portkey-provider"] == "openai"
     assert headers["x-portkey-virtual-key"] == "vk-openai"
     assert headers["x-portkey-config"] == "cfg-abc"
+    # Provider unset → header omitted so it can't override the vkey/slug.
+    assert "x-portkey-provider" not in headers
     # api_key is the placeholder when a virtual key is in use — we never
     # expose the real virtual key as a Bearer token to the SDK.
     assert "PLACEHOLDER" in client.api_key
+
+
+def test_get_openai_client_model_catalog_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Portkey ON with only the project key (the snippet from the docs):
+    gateway base URL, project key in the auth header, and NO provider /
+    virtual-key headers — routing is driven entirely by the request's
+    ``@integration/model`` slug."""
+    monkeypatch.setenv("USE_PORTKEY", "true")
+    monkeypatch.setenv("PORTKEY_API_KEY", "pk-test")
+    monkeypatch.setenv("PORTKEY_VIRTUAL_KEY", "")
+    monkeypatch.setenv("PORTKEY_PROVIDER", "")
+    monkeypatch.setenv("PORTKEY_CONFIG", "")
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+    settings_mod.get_settings.cache_clear()
+
+    client = openai_client.get_openai_client()
+    assert "api.portkey.ai" in str(client.base_url)
+    headers = {k.lower(): v for k, v in client.default_headers.items()}
+    assert headers["x-portkey-api-key"] == "pk-test"
+    assert "x-portkey-provider" not in headers
+    assert "x-portkey-virtual-key" not in headers
+
+
+def test_get_openai_client_sends_provider_header_when_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Explicit PORTKEY_PROVIDER is forwarded as x-portkey-provider so
+    the forwarded-vendor-key transport (bare model id → OpenAI) keeps
+    working."""
+    monkeypatch.setenv("USE_PORTKEY", "true")
+    monkeypatch.setenv("PORTKEY_API_KEY", "pk-test")
+    monkeypatch.setenv("PORTKEY_PROVIDER", "openai")
+    monkeypatch.setenv("PORTKEY_VIRTUAL_KEY", "")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-real-openai")
+    settings_mod.get_settings.cache_clear()
+
+    client = openai_client.get_openai_client()
+    headers = {k.lower(): v for k, v in client.default_headers.items()}
+    assert headers["x-portkey-provider"] == "openai"
 
 
 def test_get_openai_client_portkey_forwards_vendor_key(
@@ -234,3 +306,41 @@ def test_build_request_headers_forwards_trace_id(monkeypatch: pytest.MonkeyPatch
 
     headers = build_request_headers("req-abc-123")
     assert headers == {"x-portkey-trace-id": "req-abc-123"}
+
+
+# ---------------------------------------------------------------------------
+# Model validation — strict direct, gateway-delegated under Portkey
+# ---------------------------------------------------------------------------
+
+
+def test_direct_mode_rejects_non_catalog_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With Portkey off, a model id outside the curated catalog is a
+    client error — typos fail fast before we burn an upstream call."""
+    monkeypatch.setenv("USE_PORTKEY", "false")
+    settings_mod.get_settings.cache_clear()
+
+    with pytest.raises(ValidationError) as exc:
+        CompleteRequest.model_validate(_reply_payload(_PORTKEY_MODEL_SLUG))
+    assert "Unknown model" in str(exc.value)
+
+
+def test_portkey_mode_accepts_model_catalog_slug(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With Portkey on, a model-catalog slug is accepted — the gateway,
+    not the backend catalog, owns routing/validation."""
+    monkeypatch.setenv("USE_PORTKEY", "true")
+    monkeypatch.setenv("PORTKEY_API_KEY", "pk-test")
+    settings_mod.get_settings.cache_clear()
+
+    req = CompleteRequest.model_validate(_reply_payload(_PORTKEY_MODEL_SLUG))
+    assert req.model == _PORTKEY_MODEL_SLUG
+
+
+def test_portkey_mode_still_bounds_model_charset(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Relaxing catalog membership doesn't relax the charset/length
+    guard — a model id with spaces / control chars is still rejected."""
+    monkeypatch.setenv("USE_PORTKEY", "true")
+    monkeypatch.setenv("PORTKEY_API_KEY", "pk-test")
+    settings_mod.get_settings.cache_clear()
+
+    with pytest.raises(ValidationError):
+        CompleteRequest.model_validate(_reply_payload("not a valid model!"))

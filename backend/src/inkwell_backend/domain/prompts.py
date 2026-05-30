@@ -31,8 +31,8 @@ OCR_SYSTEM_PROMPT: Final[str] = (
     "layouts, finish one column before starting the next.\n"
     "- Preserve structure with Markdown: tables as GitHub-style pipe "
     "tables; code or terminal output inside ``` fenced blocks with the "
-    "original indentation; bulleted lists with \"- \"; numbered lists with "
-    "\"1. \"; headings with \"#\" levels when the visual hierarchy is clear.\n"
+    'original indentation; bulleted lists with "- "; numbered lists with '
+    '"1. "; headings with "#" levels when the visual hierarchy is clear.\n'
     "- Join soft-wrapped lines within a paragraph into one line; keep real "
     "line breaks between paragraphs, list items, and distinct blocks.\n"
     "- Keep the source script and original casing — do not transliterate, "
@@ -40,7 +40,7 @@ OCR_SYSTEM_PROMPT: Final[str] = (
     "exactly.\n"
     "- Render math with LaTeX inside $...$ or $$...$$ delimiters.\n"
     "- Output ONLY the recognised text. No preamble, no commentary, no "
-    "surrounding quotes, no \"Here is the text\" phrasing.\n"
+    'surrounding quotes, no "Here is the text" phrasing.\n'
     "- If the image contains no readable text, respond with an empty "
     "message."
 )

@@ -148,7 +148,14 @@ export function HistoryView({
   // Derived: filter + group
   // -------------------------------------------------------------------------
   const counts = useMemo(() => {
-    const base: Record<Action, number> = { reply: 0, translate: 0, grammar: 0, rewrite: 0 };
+    const base: Record<Action, number> = {
+      reply: 0,
+      translate: 0,
+      grammar: 0,
+      rewrite: 0,
+      summarize: 0,
+      explain: 0,
+    };
     for (const e of entries ?? []) base[e.action] += 1;
     return base;
   }, [entries]);

@@ -57,6 +57,11 @@ const MAX_PAGE_TITLE = 300;
 export interface ActiveTabContext {
   pageTitle?: string;
   pageUrl?: string;
+  /** Declared page metadata (site name, description, article info, …)
+   *  pulled from the active tab's content script, when reachable. Grounds
+   *  side-panel completions in the current site the same way the in-page
+   *  adapters do. Absent on internal pages or before `activeTab` is granted. */
+  meta?: Record<string, string>;
 }
 
 /**
@@ -82,6 +87,19 @@ export const captureActiveTabContext = async (): Promise<ActiveTabContext> => {
     const url = tab.url ?? "";
     if (url.startsWith("https://") || url.startsWith("http://")) {
       out.pageUrl = url;
+    }
+    // Best-effort: ask the active tab's content script for declared page
+    // metadata. Fails silently (internal pages, no content script, before
+    // activeTab is granted) — title/url alone are still useful context.
+    if (tab.id !== undefined) {
+      try {
+        const res = (await chrome.tabs.sendMessage(tab.id, {
+          type: "GET_PAGE_META",
+        })) as { meta?: Record<string, string> } | undefined;
+        if (res?.meta && Object.keys(res.meta).length) out.meta = res.meta;
+      } catch {
+        // Content script unreachable — leave meta unset.
+      }
     }
     return out;
   } catch {

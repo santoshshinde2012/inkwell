@@ -72,7 +72,14 @@ export function createLanguageDetector(opts: DetectorOptions): LanguageDetector 
   let fieldContext: RequestContext | null = null;
 
   const subjectText = (action: Action, ctx: RequestContext): string => {
-    if (action === "grammar" || action === "rewrite") return ctx.draft ?? "";
+    if (
+      action === "grammar" ||
+      action === "rewrite" ||
+      action === "summarize" ||
+      action === "explain"
+    ) {
+      return ctx.draft ?? "";
+    }
     if (ctx.post) return ctx.post.text;
     if (ctx.thread && ctx.thread.length > 0) {
       return ctx.thread[ctx.thread.length - 1]?.text ?? "";
@@ -102,8 +109,13 @@ export function createLanguageDetector(opts: DetectorOptions): LanguageDetector 
       if (opts.source.kind !== "field" || opts.getSourceLang() !== "auto") return;
       const action = opts.getAction();
       let text: string;
-      if (action === "grammar" || action === "rewrite") {
-        // The draft is cheap to read fresh from the element.
+      if (
+        action === "grammar" ||
+        action === "rewrite" ||
+        action === "summarize" ||
+        action === "explain"
+      ) {
+        // These work on the field's own text — cheap to read fresh.
         text = readText(opts.source.element);
       } else {
         // reply / translate work on the incoming thread/post.

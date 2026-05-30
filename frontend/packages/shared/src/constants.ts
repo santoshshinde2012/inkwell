@@ -15,6 +15,12 @@ export const LIMITS = {
   // Maximum length of the user's "draft so far" (for grammar/rewrite).
   MAX_DRAFT_CHARS: 8000,
 
+  // Conversational refinement: how many prior turns the client may replay,
+  // and the per-turn character cap. Kept tight — refinement is a short
+  // back-and-forth, and the whole payload still has to fit MAX_REQUEST_BYTES.
+  MAX_HISTORY_TURNS: 12,
+  MAX_HISTORY_TURN_CHARS: 8000,
+
   // Maximum response tokens we'll request from the model.
   MAX_RESPONSE_TOKENS: 1024,
 
@@ -37,6 +43,12 @@ export const LIMITS = {
   // down to fit. This bound exists only to keep a wildly oversized file
   // from blowing up memory during decode.
   MAX_OCR_INPUT_BYTES: 32 * 1024 * 1024,
+
+  // Maximum length of a model id on the wire. Covers curated catalog ids
+  // (``gpt-4o-mini``) and Portkey model-catalog slugs
+  // (``@bedrock-use1/us.anthropic.claude-…``). Mirrors
+  // ``MAX_MODEL_ID_CHARS`` in the Python backend.
+  MAX_MODEL_ID_CHARS: 200,
 } as const;
 
 // Model identifiers, the model catalog, and provider types live in ./models.

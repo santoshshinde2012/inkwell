@@ -51,10 +51,7 @@ import { historyStore, type NewHistoryEntry } from "../lib/history";
 import { loadModelCatalog } from "../lib/models";
 import { makeUuid } from "../lib/uuid";
 import { readText, writeText } from "./editable";
-import {
-  decideDefaultActionWithDetection,
-  type DefaultActionSource,
-} from "../lib/default-action";
+import { decideDefaultActionWithDetection, type DefaultActionSource } from "../lib/default-action";
 import type { SiteAdapter } from "./adapters";
 
 import {
@@ -103,7 +100,6 @@ import {
   ACTION_LABELS,
   ICON_ARROW_RIGHT,
   ICON_CHECK,
-  ICON_CHEVRON_DOWN,
   ICON_COPY,
   ICON_DROP,
   ICON_GRIP,
@@ -119,6 +115,7 @@ import {
 import { POPOVER_STYLES } from "./popover.styles";
 import { attachHeaderDrag } from "./popover.drag";
 import { createLanguageDetector } from "./popover.detect";
+import { extractPageMeta } from "./page-meta";
 
 // ---------------------------------------------------------------------------
 // Positioning. Tries below the field; flips above if there's more room there.
@@ -334,6 +331,17 @@ export const mountPopover = async ({
   titleWrap.append(title, titleSub);
   const headSpacer = document.createElement("div");
   headSpacer.className = "head-spacer";
+  // Single settings button — opens the options panel (language, tone,
+  // model, custom note) on demand so those controls don't occupy the
+  // popover's primary surface. Replaces the old inline disclosure row.
+  const settingsBtn = document.createElement("button");
+  settingsBtn.type = "button";
+  settingsBtn.className = "icon-btn";
+  settingsBtn.setAttribute("aria-label", "Options");
+  settingsBtn.setAttribute("aria-expanded", String(initialOptsExpanded));
+  settingsBtn.setAttribute("aria-controls", "inkwell-opts-body");
+  settingsBtn.title = "Options";
+  settingsBtn.innerHTML = ICON_SLIDERS;
   const expandBtn = document.createElement("button");
   expandBtn.type = "button";
   expandBtn.className = "icon-btn";
@@ -346,13 +354,18 @@ export const mountPopover = async ({
   closeBtn.setAttribute("aria-label", "Close (Esc)");
   closeBtn.title = "Close (Esc)";
   closeBtn.innerHTML = ICON_X;
-  head.append(grip, brand, titleWrap, headSpacer, expandBtn, closeBtn);
+  head.append(grip, brand, titleWrap, headSpacer, settingsBtn, expandBtn, closeBtn);
 
   // Body
   const body = document.createElement("div");
   body.className = "body";
 
-  // Action segmented control
+  // Action picker — the primary "what do you want to do?" control. A
+  // compact single-row segmented bar in the header: the selected action
+  // shows its label, the rest collapse to icon-only (with tooltips), so
+  // it stays one slim row and leaves the height for text + result.
+  const actionPicker = document.createElement("div");
+  actionPicker.className = "action-picker";
   const actions = document.createElement("div");
   actions.className = "actions";
   actions.setAttribute("role", "tablist");
@@ -362,13 +375,25 @@ export const mountPopover = async ({
     translate: createActionButton("translate"),
     grammar: createActionButton("grammar"),
     rewrite: createActionButton("rewrite"),
+    summarize: createActionButton("summarize"),
+    explain: createActionButton("explain"),
   };
-  actions.append(
-    actionButtons.reply,
-    actionButtons.translate,
-    actionButtons.grammar,
-    actionButtons.rewrite,
-  );
+  // Visual + keyboard order of the task tiles. Single source of truth so
+  // the DOM order and arrow-key navigation can never drift apart.
+  const actionOrder: Action[] = [
+    "reply",
+    "translate",
+    "grammar",
+    "rewrite",
+    "summarize",
+    "explain",
+  ];
+  // The picker is a single horizontal row, so every tile shares one row.
+  // Up/Down therefore stay within it (no-ops); Left/Right + Home/End do
+  // the stepping. Kept as a constant so the row math below reads clearly.
+  const ACTION_COLUMNS = 6;
+  actions.append(...actionOrder.map((a) => actionButtons[a]));
+  actionPicker.append(actions);
 
   const actionHint = document.createElement("p");
   actionHint.className = "action-hint";
@@ -519,46 +544,25 @@ export const mountPopover = async ({
   errEl.style.display = "none";
   errEl.setAttribute("role", "alert");
 
-  // ---- Options disclosure ------------------------------------------------
+  // ---- Options panel -----------------------------------------------------
   // Wraps language + tone/model + the optional instruction so the popover's
   // primary surface stays focused on the use case (text in → result out).
-  // Collapsed by default; expand to reveal the configuration controls. The
-  // expanded/collapsed state and a one-line summary of the current settings
-  // are persisted across popover opens.
+  // Hidden by default; the header settings (gear) button toggles it. The
+  // expanded/collapsed state is persisted across popover opens.
   const optsSection = document.createElement("div");
   optsSection.className = "opts";
 
-  const optsToggle = document.createElement("button");
-  optsToggle.type = "button";
-  optsToggle.className = "opts-toggle";
-  optsToggle.setAttribute("aria-expanded", String(initialOptsExpanded));
-  optsToggle.setAttribute("aria-controls", "inkwell-opts-body");
-  // Sliders icon makes the disclosure read as "settings / configuration"
-  // at a glance — clearer than text alone.
-  const optsIcon = document.createElement("span");
-  optsIcon.className = "opts-icon";
-  optsIcon.setAttribute("aria-hidden", "true");
-  optsIcon.innerHTML = ICON_SLIDERS;
-  const optsText = document.createElement("span");
-  optsText.className = "opts-text";
-  optsText.textContent = "Options";
-  const optsChevron = document.createElement("span");
-  optsChevron.className = "opts-chevron";
-  optsChevron.setAttribute("aria-hidden", "true");
-  optsChevron.innerHTML = ICON_CHEVRON_DOWN;
-  optsToggle.append(optsIcon, optsText, optsChevron);
-
   const optsBody = document.createElement("div");
-  optsBody.className = "opts-body";
+  optsBody.className = initialOptsExpanded ? "opts-body open" : "opts-body";
   optsBody.id = "inkwell-opts-body";
   const optsInner = document.createElement("div");
   optsInner.className = "opts-inner";
   optsInner.append(langRow, settingsRow, instructionWrap);
   optsBody.append(optsInner);
 
-  optsSection.append(optsToggle, optsBody);
+  optsSection.append(optsBody);
 
-  body.append(actions, actionHint, sourceWrap, optsSection, previewWrap, errEl);
+  body.append(actionHint, sourceWrap, optsSection, previewWrap, errEl);
 
   // Footer
   const footer = document.createElement("div");
@@ -577,7 +581,13 @@ export const mountPopover = async ({
   primaryBtn.setAttribute("aria-keyshortcuts", "Meta+Enter");
   footer.append(meta, regenBtn, cancelBtn, copyBtn, primaryBtn);
 
-  root.append(head, body, footer);
+  // Unified top section: the draggable header bar + the task picker read
+  // as one cohesive "head" zone above the working area.
+  const headSection = document.createElement("div");
+  headSection.className = "head-section";
+  headSection.append(head, actionPicker);
+
+  root.append(headSection, body, footer);
   shadow.appendChild(root);
 
   // First paint, then position (so offsetHeight is available).
@@ -854,8 +864,12 @@ export const mountPopover = async ({
   };
 
   const renderOptionsToggle = (): void => {
-    optsToggle.setAttribute("aria-expanded", String(state.optionsExpanded));
-    optsText.textContent = `Options · ${computeOptsSummary()}`;
+    settingsBtn.setAttribute("aria-expanded", String(state.optionsExpanded));
+    settingsBtn.classList.toggle("active", state.optionsExpanded);
+    optsBody.classList.toggle("open", state.optionsExpanded);
+    // The settings summary now lives in the gear's tooltip so the current
+    // language pair / tone / model stays one hover away without a row.
+    settingsBtn.title = `Options · ${computeOptsSummary()}`;
   };
 
   const renderAll = (): void => {
@@ -892,7 +906,12 @@ export const mountPopover = async ({
   // has its own copy of this helper because it shouldn't know about
   // the history-entry side of the world.
   const subjectText = (ctx: RequestContext): string => {
-    if (state.action === "grammar" || state.action === "rewrite") {
+    if (
+      state.action === "grammar" ||
+      state.action === "rewrite" ||
+      state.action === "summarize" ||
+      state.action === "explain"
+    ) {
       return ctx.draft ?? "";
     }
     if (ctx.post) return ctx.post.text;
@@ -932,6 +951,51 @@ export const mountPopover = async ({
   for (const a of Object.keys(actionButtons) as Action[]) {
     actionButtons[a].addEventListener("click", () => setAction(a));
   }
+  // Arrow-key navigation for the task tablist (WAI-ARIA tabs pattern).
+  // Left/Right step through the tiles; Up/Down move by row; Home/End jump
+  // to the ends. Selection follows focus, matching the click behaviour.
+  actions.addEventListener("keydown", (e: KeyboardEvent) => {
+    // The picker is locked while a result is streaming — same as clicks.
+    if (state.streaming) return;
+    const len = actionOrder.length;
+    const cur = actionOrder.indexOf(state.action);
+    if (cur < 0) return;
+    let next = cur;
+    switch (e.key) {
+      case "ArrowRight":
+        next = (cur + 1) % len;
+        break;
+      case "ArrowLeft":
+        next = (cur - 1 + len) % len;
+        break;
+      case "ArrowDown":
+        next = cur + ACTION_COLUMNS < len ? cur + ACTION_COLUMNS : cur % ACTION_COLUMNS;
+        break;
+      case "ArrowUp":
+        next = cur - ACTION_COLUMNS;
+        if (next < 0) {
+          next = cur;
+          while (next + ACTION_COLUMNS < len) next += ACTION_COLUMNS;
+        }
+        break;
+      case "Home":
+        next = 0;
+        break;
+      case "End":
+        next = len - 1;
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    const target = actionOrder[next];
+    if (target === undefined) return;
+    setAction(target);
+    // Move focus to the newly selected tile so the roving tabindex and
+    // the visible focus ring stay together.
+    actionButtons[target].focus();
+  });
   toneSelect.addEventListener("change", () => {
     // Option values come straight from TONE_PRESETS, so this is always valid.
     state.tone = toneSelect.value as TonePreset;
@@ -970,10 +1034,10 @@ export const mountPopover = async ({
     renderOptionsToggle();
   });
 
-  // Expand/collapse the Options disclosure. The state is per-device and
-  // persisted, so a user who routinely tweaks settings doesn't re-open it
-  // every time the popover mounts.
-  optsToggle.addEventListener("click", () => {
+  // Expand/collapse the Options panel from the header gear. The state is
+  // per-device and persisted, so a user who routinely tweaks settings
+  // doesn't re-open it every time the popover mounts.
+  settingsBtn.addEventListener("click", () => {
     state.optionsExpanded = !state.optionsExpanded;
     renderOptionsToggle();
     saveOptsExpanded(state.optionsExpanded);
@@ -1199,6 +1263,18 @@ export const mountPopover = async ({
           error: "Type a draft to rewrite, or open Options to describe what " + "to write.",
         };
       }
+      if (
+        (state.action === "summarize" || state.action === "explain") &&
+        !hasDraft &&
+        !hasPageContext
+      ) {
+        return {
+          error:
+            state.action === "summarize"
+              ? "Nothing to summarize here. Select the text or thread first."
+              : "Nothing to explain here. Select the text first.",
+        };
+      }
       return ctx;
     }
     const text = sourceEl.value.trim();
@@ -1212,15 +1288,27 @@ export const mountPopover = async ({
     if (state.action === "grammar" && !text) {
       return { error: "Add the text you want grammar-fixed." };
     }
+    if (state.action === "summarize" && !text) {
+      return { error: "Add the text you want summarized." };
+    }
+    if (state.action === "explain" && !text) {
+      return { error: "Add the text you want explained." };
+    }
     if (state.action === "rewrite" && !text && !instruction) {
       return {
         error: "Add text to rewrite, or open Options to describe what to write.",
       };
     }
+    // Page metadata grounds the response in the current site — what kind
+    // of page it is, its description, author, etc. — so a selection-mode
+    // reply/rewrite/summary reads the room (support docs vs. forum vs.
+    // news article). Only declared metadata, never scraped body content.
+    const meta = extractPageMeta();
     const base = {
       site: source.kind === "selection" ? "selection" : "manual",
       pageTitle: document.title.slice(0, 300),
       pageUrl: window.location.origin + window.location.pathname,
+      ...(Object.keys(meta).length ? { meta } : {}),
     };
     // 'reply' and 'translate' treat the text as an incoming message; the
     // other actions treat it as the draft to transform.
@@ -1274,7 +1362,12 @@ export const mountPopover = async ({
     let bilingual = false;
     if (state.action === "translate") {
       targetLanguage = isLanguageId(state.targetChoice) ? state.targetChoice : workingLanguage;
-    } else if (state.action === "reply" || state.action === "rewrite") {
+    } else if (
+      state.action === "reply" ||
+      state.action === "rewrite" ||
+      state.action === "summarize" ||
+      state.action === "explain"
+    ) {
       if (state.targetChoice === "bilingual") {
         bilingual = true;
         targetLanguage = workingLanguage;
@@ -1492,10 +1585,15 @@ const createActionButton = (action: Action): HTMLButtonElement => {
   btn.className = "action";
   btn.setAttribute("role", "tab");
   btn.setAttribute("aria-selected", "false");
+  // Name + tooltip so the icon-only (unselected) buttons stay accessible
+  // and discoverable even though their visible label is hidden.
+  btn.setAttribute("aria-label", ACTION_LABELS[action]);
+  btn.title = ACTION_LABELS[action];
   btn.dataset["action"] = action;
   const icon = document.createElement("span");
   icon.innerHTML = ACTION_ICONS[action];
   const label = document.createElement("span");
+  label.className = "action-label";
   label.textContent = ACTION_LABELS[action];
   btn.append(icon.firstElementChild as Node, label);
   return btn;

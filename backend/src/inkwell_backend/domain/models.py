@@ -35,6 +35,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from .limits import MAX_MODEL_ID_CHARS
+
 
 class ModelProvider(StrEnum):
     """Every distinct upstream a model can be served by.
@@ -79,7 +81,7 @@ class _CatalogEntry(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    id: str = Field(min_length=1, max_length=120)
+    id: str = Field(min_length=1, max_length=MAX_MODEL_ID_CHARS)
     label: str = Field(min_length=1, max_length=80)
     provider: ModelProvider
     description: str = Field(max_length=300)

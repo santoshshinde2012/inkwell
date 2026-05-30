@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 460" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" role="img" aria-label="One multilingual reply takes 90 seconds across four tools, five tabs, four context switches, and zero audit trail.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fafafa"/>
+      <stop offset="1" stop-color="#f4f4f5"/>
+    </linearGradient>
+    <linearGradient id="tool" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#f4f4f5"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#a1a1aa"/>
+    </marker>
+    <filter id="card" x="-4%" y="-8%" width="108%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#18181b" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="460" rx="18" fill="url(#bg)"/>
+
+  <!-- Title -->
+  <text x="48" y="58" font-size="26" font-weight="700" fill="#18181b">The workflow tax on one multilingual reply</text>
+  <text x="48" y="88" font-size="15.5" fill="#71717a">A single support ticket in another language, before Inkwell — five tabs, four separate tools, four context switches.</text>
+
+  <!-- Tab strip -->
+  <g>
+    <!-- Step 1: Helpdesk (read) -->
+    <g filter="url(#card)">
+      <rect x="48" y="140" width="196" height="120" rx="12" fill="url(#tool)" stroke="#e4e4e7"/>
+      <rect x="48" y="140" width="196" height="34" rx="12" fill="#eef2ff"/>
+      <rect x="48" y="158" width="196" height="16" fill="#eef2ff"/>
+      <circle cx="66" cy="157" r="4" fill="#c7d2fe"/>
+      <text x="80" y="161" font-size="12.5" font-weight="600" fill="#4338ca">Helpdesk</text>
+      <text x="64" y="206" font-size="14" font-weight="600" fill="#18181b">1 · Open ticket</text>
+      <text x="64" y="230" font-size="12.5" fill="#71717a">Inbound message in</text>
+      <text x="64" y="247" font-size="12.5" fill="#71717a">an unfamiliar language</text>
+    </g>
+
+    <!-- Step 2: Translate site (read) -->
+    <g filter="url(#card)">
+      <rect x="282" y="140" width="196" height="120" rx="12" fill="url(#tool)" stroke="#e4e4e7"/>
+      <rect x="282" y="140" width="196" height="34" rx="12" fill="#ecfdf5"/>
+      <rect x="282" y="158" width="196" height="16" fill="#ecfdf5"/>
+      <circle cx="300" cy="157" r="4" fill="#a7f3d0"/>
+      <text x="314" y="161" font-size="12.5" font-weight="600" fill="#047857">Translation site</text>
+      <text x="298" y="206" font-size="14" font-weight="600" fill="#18181b">2 · Translate in</text>
+      <text x="298" y="230" font-size="12.5" fill="#71717a">Paste, read the English,</text>
+      <text x="298" y="247" font-size="12.5" fill="#71717a">switch back</text>
+    </g>
+
+    <!-- Step 3: Helpdesk (draft) -->
+    <g filter="url(#card)">
+      <rect x="516" y="140" width="196" height="120" rx="12" fill="url(#tool)" stroke="#e4e4e7"/>
+      <rect x="516" y="140" width="196" height="34" rx="12" fill="#eef2ff"/>
+      <rect x="516" y="158" width="196" height="16" fill="#eef2ff"/>
+      <circle cx="534" cy="157" r="4" fill="#c7d2fe"/>
+      <text x="548" y="161" font-size="12.5" font-weight="600" fill="#4338ca">Helpdesk</text>
+      <text x="532" y="206" font-size="14" font-weight="600" fill="#18181b">3 · Draft reply</text>
+      <text x="532" y="230" font-size="12.5" fill="#71717a">Write the answer</text>
+      <text x="532" y="247" font-size="12.5" fill="#71717a">in English</text>
+    </g>
+
+    <!-- Step 4: Grammar tool -->
+    <g filter="url(#card)">
+      <rect x="750" y="140" width="196" height="120" rx="12" fill="url(#tool)" stroke="#e4e4e7"/>
+      <rect x="750" y="140" width="196" height="34" rx="12" fill="#fef3c7"/>
+      <rect x="750" y="158" width="196" height="16" fill="#fef3c7"/>
+      <circle cx="768" cy="157" r="4" fill="#fde68a"/>
+      <text x="782" y="161" font-size="12.5" font-weight="600" fill="#b45309">Grammar tool</text>
+      <text x="766" y="206" font-size="14" font-weight="600" fill="#18181b">4 · Polish</text>
+      <text x="766" y="230" font-size="12.5" fill="#71717a">Fix grammar, then</text>
+      <text x="766" y="247" font-size="12.5" fill="#71717a">switch again</text>
+    </g>
+
+    <!-- Step 5: Translate back + send -->
+    <g filter="url(#card)">
+      <rect x="984" y="140" width="208" height="120" rx="12" fill="url(#tool)" stroke="#e4e4e7"/>
+      <rect x="984" y="140" width="208" height="34" rx="12" fill="#ecfdf5"/>
+      <rect x="984" y="158" width="208" height="16" fill="#ecfdf5"/>
+      <circle cx="1002" cy="157" r="4" fill="#a7f3d0"/>
+      <text x="1016" y="161" font-size="12.5" font-weight="600" fill="#047857">Translation site</text>
+      <text x="1000" y="206" font-size="14" font-weight="600" fill="#18181b">5 · Translate back</text>
+      <text x="1000" y="230" font-size="12.5" fill="#71717a">Render the reply, paste</text>
+      <text x="1000" y="247" font-size="12.5" fill="#71717a">into the helpdesk, send</text>
+    </g>
+
+    <!-- Context-switch arrows between tabs -->
+    <g fill="none" stroke="#a1a1aa" stroke-width="2">
+      <path d="M244,200 C262,200 264,200 280,200" marker-end="url(#arrow)"/>
+      <path d="M478,200 C496,200 498,200 514,200" marker-end="url(#arrow)"/>
+      <path d="M712,200 C730,200 732,200 748,200" marker-end="url(#arrow)"/>
+      <path d="M946,200 C964,200 966,200 982,200" marker-end="url(#arrow)"/>
+    </g>
+    <!-- Context-switch labels -->
+    <g font-size="10.5" fill="#a1a1aa" text-anchor="middle">
+      <text x="262" y="188">switch</text>
+      <text x="496" y="188">switch</text>
+      <text x="730" y="188">switch</text>
+      <text x="964" y="188">switch</text>
+    </g>
+  </g>
+
+  <!-- Stat bar -->
+  <g>
+    <rect x="48" y="316" width="1144" height="96" rx="14" fill="#18181b"/>
+
+    <text x="118" y="362" font-size="34" font-weight="700" fill="#ffffff" text-anchor="middle">~90s</text>
+    <text x="118" y="388" font-size="12.5" fill="#a1a1aa" text-anchor="middle">per reply</text>
+
+    <line x1="236" y1="338" x2="236" y2="390" stroke="#3f3f46"/>
+
+    <text x="334" y="362" font-size="34" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+    <text x="334" y="388" font-size="12.5" fill="#a1a1aa" text-anchor="middle">separate tools</text>
+
+    <line x1="452" y1="338" x2="452" y2="390" stroke="#3f3f46"/>
+
+    <text x="550" y="362" font-size="34" font-weight="700" fill="#ffffff" text-anchor="middle">5</text>
+    <text x="550" y="388" font-size="12.5" fill="#a1a1aa" text-anchor="middle">browser tabs</text>
+
+    <line x1="668" y1="338" x2="668" y2="390" stroke="#3f3f46"/>
+
+    <text x="766" y="362" font-size="34" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+    <text x="766" y="388" font-size="12.5" fill="#a1a1aa" text-anchor="middle">context switches</text>
+
+    <line x1="884" y1="338" x2="884" y2="390" stroke="#3f3f46"/>
+
+    <text x="1038" y="362" font-size="34" font-weight="700" fill="#fca5a5" text-anchor="middle">0</text>
+    <text x="1038" y="388" font-size="12.5" fill="#a1a1aa" text-anchor="middle">audit trail</text>
+  </g>
+</svg>

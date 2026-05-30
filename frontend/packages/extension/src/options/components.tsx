@@ -26,6 +26,8 @@ export const ACTION_LABELS: Record<Action, string> = {
   translate: "Translate",
   grammar: "Grammar",
   rewrite: "Rewrite",
+  summarize: "Summarize",
+  explain: "Explain",
 };
 
 export const KBD_SHORTCUT = navigator.platform.includes("Mac") ? "⌘⇧K" : "Ctrl+Shift+K";

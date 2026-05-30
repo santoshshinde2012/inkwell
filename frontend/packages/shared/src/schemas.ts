@@ -9,7 +9,7 @@ import { ERROR_CODES } from "./errors";
 // catalog — see ModelCatalogResponse in ./models. Validation here is
 // shape-only (string, sane length); the backend re-validates against
 // its live catalog before dispatching to a provider.
-const ModelIdField = z.string().min(1).max(120);
+const ModelIdField = z.string().min(1).max(LIMITS.MAX_MODEL_ID_CHARS);
 
 // ---------------------------------------------------------------------------
 // /api/v1/complete  (Edge, streaming SSE)
@@ -68,6 +68,20 @@ export const RequestProfileSchema = z
 
 export type RequestProfile = z.infer<typeof RequestProfileSchema>;
 
+// One prior turn replayed for conversational refinement. The client
+// resends earlier turns (its task + the assistant's previous draft) so a
+// follow-up like "make it shorter" revises the existing output instead of
+// starting over. `system` is intentionally excluded so a client can't
+// inject a competing system prompt.
+export const ConversationTurnSchema = z
+  .object({
+    role: z.enum(["user", "assistant"]),
+    text: z.string().min(1).max(LIMITS.MAX_HISTORY_TURN_CHARS),
+  })
+  .strict();
+
+export type ConversationTurn = z.infer<typeof ConversationTurnSchema>;
+
 export const CompleteRequestSchema = z
   .object({
     action: z.enum(ACTIONS),
@@ -85,6 +99,9 @@ export const CompleteRequestSchema = z
     sourceLanguage: z.enum(SOURCE_LANGUAGE_IDS).optional(),
     targetLanguage: z.enum(LANGUAGE_IDS).optional(),
     bilingual: z.boolean().optional(),
+    // Prior turns for conversational refinement (see ConversationTurnSchema).
+    // Omitted on the first request; populated when iterating on a result.
+    history: z.array(ConversationTurnSchema).max(LIMITS.MAX_HISTORY_TURNS).optional(),
     // Client-supplied personalization, sourced from local extension storage.
     profile: RequestProfileSchema.optional(),
     // Client-generated request id, echoed in metadata logs.
@@ -113,6 +130,10 @@ export const CompleteRequestSchema = z
         //   - page context to draw from (e.g., "summarize this thread").
         return hasDraft || hasInstruction || hasPageContext;
       }
+      if (val.action === "summarize" || val.action === "explain") {
+        // Both need something to read — a draft or page context.
+        return hasDraft || hasPageContext;
+      }
       // reply
       return hasPageContext;
     },
@@ -121,7 +142,7 @@ export const CompleteRequestSchema = z
         "Action requires content to work with: 'reply' needs thread/post, " +
         "'grammar' needs a draft, 'translate' needs text plus a target " +
         "language, 'rewrite' needs at least one of draft, instruction, or " +
-        "page context.",
+        "page context, 'summarize'/'explain' need a draft or page context.",
       path: ["context"],
     },
   );

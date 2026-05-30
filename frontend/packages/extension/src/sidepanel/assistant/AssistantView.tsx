@@ -21,8 +21,10 @@ import {
   type Action,
   type CompleteCancelMessage,
   type CompleteStartMessage,
+  type ConversationTurn,
   isLanguageId,
   type LanguageId,
+  LIMITS,
   MESSAGE_TYPES,
   type RequestContext,
 } from "@inkwell/shared";
@@ -85,6 +87,13 @@ export function AssistantView({
   // Per-input local state — small and view-specific, not worth hoisting.
   const [inputText, setInputText] = useState("");
   const [instruction, setInstruction] = useState("");
+
+  // Conversational refinement transcript. Holds the completed turns that
+  // precede the current on-screen result, so a follow-up ("make it
+  // shorter") can replay them to the backend and revise the latest draft
+  // instead of regenerating from scratch. Reset whenever a fresh task
+  // starts (generate / action change).
+  const historyTurnsRef = useRef<ConversationTurn[]>([]);
 
   // Draft autosave. We restore once on mount (suppressing the matching
   // save so the restore itself doesn't bounce back through the
@@ -316,9 +325,14 @@ export function AssistantView({
       settings.setAction(next);
       if (next === "translate") {
         settings.setTargetChoice((cur) => (isLanguageId(cur) ? cur : settings.workingLanguage));
-      } else if (next === "rewrite") {
+      } else if (next === "rewrite" || next === "summarize" || next === "explain") {
+        // These offer "Keep source language" + a language list, but no
+        // "bilingual" sentinel — coerce it so the picker stays valid.
         settings.setTargetChoice((cur) => (cur === "bilingual" ? "match" : cur));
       }
+      // Switching action starts a brand-new task — drop any refinement
+      // transcript so a follow-up doesn't carry over a stale conversation.
+      historyTurnsRef.current = [];
       result.resetIdle();
     },
     [settings, result],
@@ -353,6 +367,10 @@ export function AssistantView({
     const trimmedInstruction = instruction.trim();
     const { action, tone, model, sourceLang, targetChoice, workingLanguage } = settings;
 
+    // A fresh generation begins a new conversation — clear any prior
+    // refinement transcript.
+    historyTurnsRef.current = [];
+
     const validation = validateInput(action, trimmed, trimmedInstruction);
     if (validation) {
       // Pre-flight failure — no stream has started, so leave any existing
@@ -373,6 +391,7 @@ export function AssistantView({
       site: "sidepanel",
       ...(activeTab.pageTitle ? { pageTitle: activeTab.pageTitle } : {}),
       ...(activeTab.pageUrl ? { pageUrl: activeTab.pageUrl } : {}),
+      ...(activeTab.meta ? { meta: activeTab.meta } : {}),
     };
     const context: RequestContext =
       action === "reply" || action === "translate"
@@ -448,6 +467,111 @@ export function AssistantView({
     } satisfies CompleteCancelMessage);
   }, [result]);
 
+  // -------------------------------------------------------------------------
+  // Refine — iterate on the current result with a short follow-up
+  // instruction ("make it shorter", "warmer", …). Re-runs the same
+  // action + context, but replays the conversation so the model revises
+  // its previous draft instead of starting over.
+  // -------------------------------------------------------------------------
+  const refine = useCallback(
+    async (refineInstruction: string): Promise<void> => {
+      if (result.streaming) return;
+      const instr = refineInstruction.trim();
+      const prevOutput = result.preview;
+      if (!instr || !prevOutput.trim()) return;
+
+      const trimmed = inputText.trim();
+      const { action, tone, model, sourceLang, targetChoice, workingLanguage } = settings;
+
+      // Reply / translate need their source text; the other actions work
+      // off the draft. If the input was cleared after generating, there's
+      // nothing to anchor the refinement to.
+      if (!trimmed) {
+        result.surfaceError("Keep the original text in the box to refine the result.");
+        return;
+      }
+
+      const activeTab = await captureActiveTabContext();
+      const base = {
+        site: "sidepanel",
+        ...(activeTab.pageTitle ? { pageTitle: activeTab.pageTitle } : {}),
+        ...(activeTab.pageUrl ? { pageUrl: activeTab.pageUrl } : {}),
+        ...(activeTab.meta ? { meta: activeTab.meta } : {}),
+      };
+      const context: RequestContext =
+        action === "reply" || action === "translate"
+          ? { ...base, post: { text: trimmed } }
+          : { ...base, draft: trimmed };
+
+      const { targetLanguage, bilingual } = resolveTargetLanguage(
+        action,
+        targetChoice,
+        workingLanguage,
+      );
+
+      // History sent upstream = the prior transcript plus the current
+      // on-screen draft as the latest assistant turn. Trim to the cap.
+      const sentHistory: ConversationTurn[] = [
+        ...historyTurnsRef.current,
+        { role: "assistant" as const, text: prevOutput },
+      ].slice(-LIMITS.MAX_HISTORY_TURNS);
+      // Advance the stored transcript so the *next* refine includes this
+      // round's draft and instruction.
+      historyTurnsRef.current = [
+        ...historyTurnsRef.current,
+        { role: "assistant" as const, text: prevOutput },
+        { role: "user" as const, text: instr },
+      ].slice(-LIMITS.MAX_HISTORY_TURNS);
+
+      const streamId = crypto.randomUUID();
+      const pendingHistory: NewHistoryEntry = {
+        action,
+        sourceLanguage: sourceLang,
+        targetLanguage: targetLanguage ?? null,
+        bilingual,
+        inputText: trimmed,
+        outputText: "",
+        site: base.site,
+        conversationUrl: activeTab.pageUrl ?? "",
+        pageTitle: activeTab.pageTitle ?? "",
+      };
+
+      result.beginStream(streamId, pendingHistory);
+
+      const msg: CompleteStartMessage = {
+        type: MESSAGE_TYPES.COMPLETE_START,
+        streamId,
+        payload: {
+          action,
+          context,
+          tone,
+          model,
+          instruction: instr,
+          sourceLanguage: sourceLang,
+          ...(targetLanguage ? { targetLanguage } : {}),
+          ...(bilingual ? { bilingual: true } : {}),
+          history: sentHistory,
+        },
+      };
+      try {
+        const ack = await sendToBackground<{
+          ok: boolean;
+          error?: { message?: string };
+        }>(msg);
+        if (!ack?.ok) {
+          result.failStream(ack?.error?.message ?? "Backend rejected the request.");
+        }
+      } catch (err) {
+        if (err instanceof ExtensionContextInvalidatedError) {
+          result.failStream(err.message, "refresh");
+        } else {
+          result.failStream(err instanceof Error ? err.message : "Failed to start.");
+        }
+      }
+    },
+    [result, inputText, settings],
+  );
+
   // Cmd/Ctrl+Enter generates from anywhere in the panel.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -479,6 +603,12 @@ export function AssistantView({
   const handleGenerate = useCallback((): void => {
     void generate();
   }, [generate]);
+  const handleRefine = useCallback(
+    (instr: string): void => {
+      void refine(instr);
+    },
+    [refine],
+  );
   const handleCancel = cancel;
   const handleCapture = useCallback((): void => {
     void captureSelection();
@@ -582,6 +712,7 @@ export function AssistantView({
             copied={result.copied}
             onCopy={handleCopy}
             onRegenerate={handleGenerate}
+            onRefine={handleRefine}
           />
         ) : (
           <HeroEmptyState action={settings.action} theme={theme} />
@@ -669,6 +800,12 @@ function validateInput(
       openSheet: true,
     };
   }
+  if (action === "summarize" && !text) {
+    return { message: "Add the text you want summarized." };
+  }
+  if (action === "explain" && !text) {
+    return { message: "Add the text you want explained." };
+  }
   return null;
 }
 
@@ -683,7 +820,12 @@ function resolveTargetLanguage(
       bilingual: false,
     };
   }
-  if (action === "reply" || action === "rewrite") {
+  if (
+    action === "reply" ||
+    action === "rewrite" ||
+    action === "summarize" ||
+    action === "explain"
+  ) {
     if (targetChoice === "bilingual") {
       return { targetLanguage: workingLanguage, bilingual: true };
     }

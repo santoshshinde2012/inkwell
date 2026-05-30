@@ -1,7 +1,7 @@
-// Segmented picker for the four Assistant actions (Reply / Translate /
-// Grammar / Rewrite). Each tab pulls its colour from `ACTION_THEMES` so the
-// active state lights up the same hue the user will see on the result
-// border and the primary Send button.
+// Segmented picker for the Assistant actions (Reply / Translate / Grammar /
+// Rewrite / Summarize / Explain). Each tab pulls its colour from
+// `ACTION_THEMES` so the active state lights up the same hue the user will
+// see on the result border and the primary Send button.
 
 import { memo } from "react";
 import type { JSX } from "react";
@@ -14,14 +14,14 @@ export interface ActionSegmentsProps {
   onChange: (a: Action) => void;
 }
 
-const ITEMS: Action[] = ["reply", "translate", "grammar", "rewrite"];
+const ITEMS: Action[] = ["reply", "translate", "grammar", "rewrite", "summarize", "explain"];
 
 function ActionSegmentsImpl({ current, onChange }: ActionSegmentsProps): JSX.Element {
   return (
     <div
       role="tablist"
       aria-label="Action"
-      className="grid grid-cols-4 gap-1 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-1 shadow-inner shadow-black/20"
+      className="grid grid-cols-3 gap-1 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-1 shadow-inner shadow-black/20"
     >
       {ITEMS.map((id) => {
         const active = id === current;

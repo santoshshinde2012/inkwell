@@ -6,8 +6,17 @@
 //   grammar   — fix grammar/spelling in the user's draft, in its own language
 //   rewrite   — transform/compose/light-edit text (optionally into a new language)
 //   translate — render a customer query (or any text) in a chosen language
+//   summarize — condense a thread/draft/page into a short summary
+//   explain   — explain what a piece of text means, in plain language
 
-export const ACTIONS = ["reply", "grammar", "rewrite", "translate"] as const;
+export const ACTIONS = [
+  "reply",
+  "grammar",
+  "rewrite",
+  "translate",
+  "summarize",
+  "explain",
+] as const;
 export type Action = (typeof ACTIONS)[number];
 
 export const isAction = (value: unknown): value is Action =>

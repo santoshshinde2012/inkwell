@@ -233,19 +233,36 @@ Two modes, one SDK call. Schematically:
 # USE_PORTKEY=false → direct OpenAI
 AsyncOpenAI(api_key=OPENAI_API_KEY, timeout=...)
 
-# USE_PORTKEY=true → Portkey gateway
+# USE_PORTKEY=true → Portkey gateway (base_url = PORTKEY_GATEWAY_URL)
 AsyncOpenAI(
     api_key=<placeholder or vendor key>,
     base_url=PORTKEY_BASE_URL,
     default_headers=createHeaders(
         api_key=PORTKEY_API_KEY,
-        provider="openai",
-        virtual_key=PORTKEY_VIRTUAL_KEY,  # optional
+        provider=PORTKEY_PROVIDER,         # optional — omitted when unset
+        virtual_key=PORTKEY_VIRTUAL_KEY,   # optional
         config=PORTKEY_CONFIG,             # optional
     ),
     timeout=...,
 )
 ```
+
+Under `USE_PORTKEY=true` the project key (`PORTKEY_API_KEY`) is always
+sent; the *upstream* is then chosen by exactly one of three styles:
+
+- **Model-catalog slug** — leave `PORTKEY_PROVIDER` / `PORTKEY_VIRTUAL_KEY`
+  unset and send the request `model` as `@integration-slug/model-id`
+  (e.g. `@bedrock-use1/us.anthropic.claude-...`). The slug routes to any
+  vendor, so the request schema accepts non-catalog model ids while the
+  gateway is on (`_model_in_catalog` relaxes once `portkey_enabled`).
+- **Virtual key** — set `PORTKEY_VIRTUAL_KEY`; Portkey's vault supplies
+  the upstream credential and `OPENAI_API_KEY` may stay blank.
+- **Forwarded provider key** — set `PORTKEY_PROVIDER=openai` and
+  `OPENAI_API_KEY`; the gateway forwards your key for a bare model id.
+
+`PORTKEY_PROVIDER` defaults to unset so a stray `x-portkey-provider`
+header can't override slug / virtual-key routing — that's why the
+gateway stays vendor-agnostic.
 
 The public surface of `openai_client.py` is two functions:
 

@@ -13,10 +13,12 @@
 import {
   Action,
   LanguageId,
+  LIMITS,
   ModelId,
   SourceLanguage,
   TONE_PRESETS,
   TonePreset,
+  isAction,
   isLanguageId,
 } from "@inkwell/shared";
 
@@ -100,15 +102,16 @@ export interface LastUsedShape {
   targetChoice?: TargetChoice;
 }
 
-export const isValidAction = (v: unknown): v is Action =>
-  v === "reply" || v === "translate" || v === "grammar" || v === "rewrite";
+// Delegates to the shared catalogue so new actions (summarize, explain, …)
+// are recognised without touching this guard.
+export const isValidAction = (v: unknown): v is Action => isAction(v);
 export const isValidTone = (v: unknown): v is TonePreset =>
   typeof v === "string" && (TONE_PRESETS as readonly string[]).includes(v);
 // Permissive check — the catalog is fetched from the backend, so we
 // can't enumerate valid ids at this layer. The picker validates the
 // chosen id against the current catalog when rendering.
 export const isValidModel = (v: unknown): v is ModelId =>
-  typeof v === "string" && v.length > 0 && v.length <= 120;
+  typeof v === "string" && v.length > 0 && v.length <= LIMITS.MAX_MODEL_ID_CHARS;
 export const isValidSourceLang = (v: unknown): v is SourceLanguage =>
   v === "auto" || (typeof v === "string" && isLanguageId(v));
 export const isValidTargetChoice = (v: unknown): v is TargetChoice =>
@@ -268,9 +271,7 @@ export const loadAssistantDraft = (): Promise<AssistantDraft | null> => {
  *  this so storage isn't written on every keystroke. Empty drafts
  *  remove the key instead of saving an empty record, so a stale
  *  record can't reappear after the user cleared the field. */
-export const saveAssistantDraft = (
-  draft: Omit<AssistantDraft, "updatedAt">,
-): void => {
+export const saveAssistantDraft = (draft: Omit<AssistantDraft, "updatedAt">): void => {
   try {
     if (!draft.inputText && !draft.instruction) {
       void chrome.storage.local.remove(DRAFT_KEY);

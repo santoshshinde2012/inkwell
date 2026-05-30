@@ -36,7 +36,10 @@ from .languages import AUTO_DETECT, LANGUAGE_IDS, SOURCE_LANGUAGE_IDS
 from .limits import (
     MAX_CONTEXT_CHARS,
     MAX_DRAFT_CHARS,
+    MAX_HISTORY_TURN_CHARS,
+    MAX_HISTORY_TURNS,
     MAX_INSTRUCTION_CHARS,
+    MAX_MODEL_ID_CHARS,
     MAX_OCR_IMAGE_BYTES,
 )
 from .models import MODEL_IDS
@@ -68,7 +71,16 @@ OcrMimeType = Literal["image/png", "image/jpeg", "image/webp", "image/gif"]
 # so the schemas stay in sync with the source of truth.
 LanguageId = Annotated[str, Field(json_schema_extra={"enum": list(LANGUAGE_IDS)})]
 SourceLanguage = Annotated[str, Field(json_schema_extra={"enum": list(SOURCE_LANGUAGE_IDS)})]
-ModelId = Annotated[str, Field(json_schema_extra={"enum": list(MODEL_IDS)})]
+# Bounded charset + length so even the relaxed Portkey path (below) can't
+# accept an unbounded or exotic string. Covers catalog ids (``gpt-4o``)
+# and Portkey model-catalog slugs (``@bedrock-use1/us.anthropic.claude``).
+# The ``enum`` hint documents the curated direct-OpenAI catalog in OpenAPI;
+# the cross-field validator decides whether non-catalog ids are allowed.
+ModelId = Annotated[
+    str,
+    StringConstraints(min_length=1, max_length=MAX_MODEL_ID_CHARS, pattern=r"^[A-Za-z0-9._:@/-]+$"),
+    Field(json_schema_extra={"enum": list(MODEL_IDS)}),
+]
 
 
 class ThreadMessage(BaseModel):
@@ -108,6 +120,25 @@ class RequestContext(BaseModel):
     meta: dict[str, MetaValue] | None = None
 
 
+HistoryTurnText = Annotated[str, StringConstraints(min_length=1, max_length=MAX_HISTORY_TURN_CHARS)]
+
+
+class ConversationTurn(BaseModel):
+    """One prior turn in a refinement conversation.
+
+    The client replays earlier turns — its own task message(s) and the
+    assistant's previous draft(s) — so a follow-up like "make it shorter"
+    revises the existing output instead of starting from scratch. Roles
+    mirror the chat convention; ``system`` is intentionally excluded so a
+    client can never inject a competing system prompt.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    role: Literal["user", "assistant"]
+    text: HistoryTurnText
+
+
 class RequestProfile(BaseModel):
     """Optional personalization the extension attaches from local storage."""
 
@@ -138,6 +169,9 @@ class CompleteRequest(BaseModel):
     source_language: SourceLanguage | None = Field(default=None, alias="sourceLanguage")
     target_language: LanguageId | None = Field(default=None, alias="targetLanguage")
     bilingual: bool | None = None
+    # Prior turns for conversational refinement. Empty/omitted for the
+    # first request; populated when the user iterates on a result.
+    history: list[ConversationTurn] | None = Field(default=None, max_length=MAX_HISTORY_TURNS)
     profile: RequestProfile | None = None
     client_request_id: Annotated[str, Field(pattern=r"^[0-9a-fA-F-]{36}$")] | None = Field(
         default=None,
@@ -163,6 +197,16 @@ class CompleteRequest(BaseModel):
     def _model_in_catalog(cls, value: str | None) -> str | None:
         if value is None or value in MODEL_IDS:
             return value
+        # When Portkey is enabled the gateway owns model routing —
+        # virtual keys and model-catalog slugs ("@integration/model")
+        # reference upstreams the backend has no catalog for. Accept any
+        # well-formed id (charset/length already bounded by ``ModelId``)
+        # and let the gateway validate it. Direct OpenAI stays strict so
+        # a typo fails fast at the boundary instead of burning a call.
+        from ..settings import get_settings
+
+        if get_settings().portkey_enabled:
+            return value
         raise ValueError(f"Unknown model: {value!r}")
 
     @model_validator(mode="after")
@@ -186,6 +230,12 @@ class CompleteRequest(BaseModel):
             )
         if self.action is Action.REPLY and not has_page_context:
             raise ValueError("'reply' action requires context.thread or context.post.")
+        if self.action in (Action.SUMMARIZE, Action.EXPLAIN) and not (
+            has_draft or has_page_context
+        ):
+            raise ValueError(
+                f"'{self.action.value}' action needs text in context.draft / thread / post."
+            )
         return self
 
 

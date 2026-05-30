@@ -1,7 +1,9 @@
 // Result card — the main output surface, sized to dominate the panel's
 // vertical space. Two states:
 //   - streaming: tokens arriving, animated thinking dots / live caret
-//   - ready:     final output, with Copy + Regenerate actions
+//   - ready:     final output, with Copy + Regenerate actions and a
+//                Refine bar (quick chips + free-text follow-up) that
+//                iterates on the draft via conversational refinement
 //
 // Errors render as a banner above this card (in the parent); the empty
 // state is the HeroEmptyState, not this component. The parent gates
@@ -10,9 +12,9 @@
 // Actions live as small floating chips in the top-right of the card,
 // surfaced only when a complete result is on screen.
 
-import { memo } from "react";
+import { memo, useState } from "react";
 import type { JSX } from "react";
-import { CheckIcon, CopyIcon, RegenerateIcon } from "../icons";
+import { CheckIcon, CopyIcon, RegenerateIcon, SendIcon } from "../icons";
 import type { ActionTheme } from "../actionTheme";
 
 export interface ResultCardProps {
@@ -23,7 +25,21 @@ export interface ResultCardProps {
   copied: boolean;
   onCopy: () => void;
   onRegenerate: () => void;
+  /** Re-run the same action with a short follow-up instruction, replaying
+   *  the conversation so the model revises this draft. Omit to hide the
+   *  refine bar. */
+  onRefine?: (instruction: string) => void;
 }
+
+// Quick one-tap refinements. The label is compact for the chip; the
+// instruction is the full directive sent to the model.
+const REFINE_CHIPS: ReadonlyArray<{ label: string; instruction: string }> = [
+  { label: "Shorter", instruction: "Make it shorter." },
+  { label: "Longer", instruction: "Make it more detailed." },
+  { label: "Formal", instruction: "Make it more formal." },
+  { label: "Friendlier", instruction: "Make it warmer and friendlier." },
+  { label: "Simpler", instruction: "Simplify the language." },
+];
 
 function ResultCardImpl({
   theme,
@@ -33,6 +49,7 @@ function ResultCardImpl({
   copied,
   onCopy,
   onRegenerate,
+  onRefine,
 }: ResultCardProps): JSX.Element {
   const ready = !streaming && !!preview;
   const containerClass = streaming
@@ -73,6 +90,7 @@ function ResultCardImpl({
           <ThinkingDots theme={theme} />
         )}
       </div>
+      {ready && onRefine && <RefineBar theme={theme} onRefine={onRefine} />}
     </section>
   );
 }
@@ -111,6 +129,65 @@ function ToolbarButton({
     >
       {children}
     </button>
+  );
+}
+
+function RefineBar({
+  theme,
+  onRefine,
+}: {
+  theme: ActionTheme;
+  onRefine: (instruction: string) => void;
+}): JSX.Element {
+  const [text, setText] = useState("");
+  const submit = (): void => {
+    const v = text.trim();
+    if (!v) return;
+    onRefine(v);
+    setText("");
+  };
+  return (
+    <div className="mt-2 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-2">
+      <div className="mb-1.5 flex flex-wrap gap-1">
+        {REFINE_CHIPS.map((chip) => (
+          <button
+            key={chip.label}
+            type="button"
+            onClick={() => onRefine(chip.instruction)}
+            title={chip.instruction}
+            className={`rounded-full border border-zinc-700 bg-zinc-800/60 px-2.5 py-1 text-[10.5px] font-medium text-zinc-300 transition-colors hover:border-zinc-600 hover:text-zinc-100 hover:${theme.accentIcon} focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500`}
+          >
+            {chip.label}
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center gap-1.5">
+        <input
+          type="text"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              submit();
+            }
+          }}
+          placeholder="Refine the result — e.g. “add a deadline”…"
+          aria-label="Refine instruction"
+          className="min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-950/60 px-2.5 py-1.5 text-[12px] text-zinc-100 placeholder:text-zinc-500 focus:border-zinc-500 focus:outline-none"
+        />
+        <button
+          type="button"
+          onClick={submit}
+          disabled={!text.trim()}
+          title="Refine (Enter)"
+          aria-label="Refine"
+          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-white transition-all disabled:cursor-not-allowed disabled:opacity-40 ${theme.ctaGradient} ${theme.ctaHover} ${theme.ctaShadow}`}
+        >
+          <SendIcon size={14} />
+        </button>
+      </div>
+    </div>
   );
 }
 

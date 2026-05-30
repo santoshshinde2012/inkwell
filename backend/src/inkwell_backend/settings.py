@@ -105,6 +105,15 @@ class Settings(BaseSettings):
     # backend's env entirely.
     portkey_virtual_key: str | None = None
 
+    # Optional Portkey provider slug — sent as ``x-portkey-provider`` so
+    # the gateway knows which upstream to route a *bare* model id to
+    # (e.g. ``openai`` for ``gpt-4o``). Leave UNSET when you route via a
+    # virtual key or a model-catalog slug (``@integration/model``):
+    # those carry their own routing, and a stray provider header would
+    # override / conflict with them. Defaulting to None keeps the gateway
+    # vendor-agnostic — OpenAI, Anthropic, Bedrock, … all work.
+    portkey_provider: str | None = None
+
     # Optional Portkey config id — points at a saved gateway config
     # (cache TTLs, fallbacks, guardrails). Leaving this unset uses the
     # account default.
@@ -136,17 +145,25 @@ class Settings(BaseSettings):
 
     @property
     def has_openai(self) -> bool:
-        """True when a usable OpenAI upstream is reachable — directly
-        with an OpenAI key, or via Portkey (with either a virtual key
-        or a real OpenAI key forwarded through the gateway).
+        """True when a usable real upstream is reachable.
+
+        Two transports:
+
+        * **Direct** — an ``OPENAI_API_KEY`` is present.
+        * **Portkey gateway** — always reachable when enabled. The
+          project key (guaranteed present by the validator below) is
+          itself sufficient: the gateway resolves the upstream
+          credential from a virtual key, a forwarded ``OPENAI_API_KEY``,
+          or a model-catalog slug (``@integration/model``). We therefore
+          don't second-guess which of those is configured here.
 
         Drives the mock-vs-real branch in the provider; the mock path
-        kicks in only when no usable credential combination exists.
+        kicks in only when no real transport exists. The name is kept
+        for log/field stability even though the gateway may route to a
+        non-OpenAI vendor — it reads as "a real model upstream exists".
         """
         if self.portkey_enabled:
-            return bool(
-                self.portkey_virtual_key or (self.openai_api_key and self.openai_api_key.strip())
-            )
+            return True
         return bool(self.openai_api_key and self.openai_api_key.strip())
 
     @property
@@ -165,6 +182,22 @@ class Settings(BaseSettings):
     @classmethod
     def _strip_model_id(cls, value: str) -> str:
         return value.strip()
+
+    @field_validator("portkey_virtual_key", "portkey_provider", "portkey_config")
+    @classmethod
+    def _empty_optional_to_none(cls, value: str | None) -> str | None:
+        """Treat a blank env var (``PORTKEY_PROVIDER=``) as unset.
+
+        ``.env`` files conventionally list every key with an empty value;
+        without this an empty string would be forwarded to the gateway as
+        a real (and wrong) ``x-portkey-provider: `` header, breaking
+        routing. Collapsing blanks to None keeps "present but empty" and
+        "absent" equivalent.
+        """
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
 
     @field_validator("portkey_base_url")
     @classmethod

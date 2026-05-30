@@ -23,6 +23,7 @@ import { z } from "zod";
 // must run `pnpm sync-config` (or any of the wired pnpm scripts)
 // before tsc can resolve this import.
 import catalogJson from "./_generated/models.catalog.json" with { type: "json" };
+import { LIMITS } from "./constants";
 
 /**
  * Every distinct upstream a model can be served by. Kept narrow at
@@ -43,7 +44,7 @@ const TIERS = ["fast", "balanced", "quality"] as const;
 // by mistake, or land mid-way through a partial write) before any
 // caller observes corrupted data.
 const ModelInfoSchema = z.object({
-  id: z.string().min(1).max(120),
+  id: z.string().min(1).max(LIMITS.MAX_MODEL_ID_CHARS),
   label: z.string().min(1).max(80),
   // Bundled provider field is constrained to the type-level union so
   // a rebuild-required mismatch surfaces at module load rather than
@@ -115,7 +116,7 @@ export const getModelInfo = (id: string): ModelInfo | undefined =>
 // is the only thing callers need. Kept un-exported so the public
 // surface of @inkwell/shared stays small.
 const RemoteModelInfoSchema = z.object({
-  id: z.string().min(1).max(120),
+  id: z.string().min(1).max(LIMITS.MAX_MODEL_ID_CHARS),
   label: z.string().min(1).max(80),
   provider: z.string().min(1),
   description: z.string().max(300),

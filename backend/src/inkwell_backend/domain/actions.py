@@ -21,3 +21,7 @@ class Action(StrEnum):
     REWRITE = "rewrite"
     # Render a customer query (or any text) in a chosen language.
     TRANSLATE = "translate"
+    # Condense a thread / draft / page into a short summary.
+    SUMMARIZE = "summarize"
+    # Explain or clarify what a piece of text means, in plain terms.
+    EXPLAIN = "explain"

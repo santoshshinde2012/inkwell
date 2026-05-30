@@ -21,6 +21,7 @@ import {
   DEFAULT_BLOCKED_HOSTS,
   DEFAULT_MODEL_ID,
   DEFAULT_WORKING_LANGUAGE,
+  LIMITS,
   LocalSettings,
   TONE_PRESETS,
   isLanguageId,
@@ -32,7 +33,7 @@ import {
 // lib/models.ts) and we can't enumerate valid ids at the storage layer.
 // Sane upper bound matches the wire-side ModelIdField in @inkwell/shared.
 const isStorableModelId = (v: unknown): v is string =>
-  typeof v === "string" && v.length > 0 && v.length <= 120;
+  typeof v === "string" && v.length > 0 && v.length <= LIMITS.MAX_MODEL_ID_CHARS;
 
 // The build-time default backend — used until the user configures their own.
 const DEFAULT_BACKEND_URL = __BACKEND_URL__;

@@ -138,6 +138,11 @@ def detect_suspicious(ctx: RequestContext) -> str | None:
         blobs.extend(message.text for message in ctx.thread)
     if ctx.post:
         blobs.append(ctx.post.text)
+    if ctx.meta:
+        # ``meta`` carries page-derived values (site description, article
+        # metadata, …) that adapters scrape from the DOM — untrusted, so
+        # it gets the same red-flag scan as thread/post content.
+        blobs.extend(ctx.meta.values())
     for blob in blobs:
         for pattern in _SUSPICIOUS_PATTERNS:
             if pattern.search(blob):

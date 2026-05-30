@@ -28,6 +28,10 @@ export const ICON_CHEVRON_DOWN = `<svg ${SVG_ATTRS}><path d="m6 9 6 6 6-6"/></sv
 export const ICON_SLIDERS = `<svg ${SVG_ATTRS}><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><circle cx="14" cy="4" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="16" cy="20" r="2"/></svg>`;
 export const ICON_COPY = `<svg ${SVG_ATTRS}><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
 export const ICON_TRANSLATE = `<svg ${SVG_ATTRS}><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>`;
+// Lucide "text"-style lines, decreasing width — reads as "summary".
+export const ICON_SUMMARIZE = `<svg ${SVG_ATTRS}><path d="M21 6H3"/><path d="M17 12H3"/><path d="M13 18H3"/></svg>`;
+// Lucide "lightbulb" — reads as "explain / make clear".
+export const ICON_EXPLAIN = `<svg ${SVG_ATTRS}><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V18h6v-1.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2Z"/></svg>`;
 // Lucide "panel-right-open" — represents the Chrome side panel docked on
 // the right. Used by the header button that hands the popover's working
 // text off to the side panel.
@@ -47,6 +51,8 @@ export const ACTION_LABELS: Record<Action, string> = {
   translate: "Translate",
   grammar: "Grammar",
   rewrite: "Rewrite",
+  summarize: "Summarize",
+  explain: "Explain",
 };
 
 export const ACTION_ICONS: Record<Action, string> = {
@@ -54,6 +60,8 @@ export const ACTION_ICONS: Record<Action, string> = {
   translate: ICON_TRANSLATE,
   grammar: ICON_GRAMMAR,
   rewrite: ICON_REWRITE,
+  summarize: ICON_SUMMARIZE,
+  explain: ICON_EXPLAIN,
 };
 
 export const ACTION_HINTS: Record<Action, string> = {
@@ -61,6 +69,8 @@ export const ACTION_HINTS: Record<Action, string> = {
   translate: "Translates the text into the language you choose. The original is kept in history.",
   grammar: "Fixes grammar and spelling in the text's own language — no translation.",
   rewrite: "Rewrites for tone, length, or clarity — optionally into another language.",
+  summarize: "Condenses a thread, draft, or page into a short, faithful summary.",
+  explain: "Explains what the text means in plain language — jargon, intent, and all.",
 };
 
 export const INSTRUCTION_PLACEHOLDERS: Record<Action, string> = {
@@ -68,6 +78,8 @@ export const INSTRUCTION_PLACEHOLDERS: Record<Action, string> = {
   translate: "Optional: extra direction (e.g. “this is a support ticket — keep it formal”).",
   grammar: "Optional: extra direction (e.g. “keep the casual tone”).",
   rewrite: "Describe what to write, or how to rewrite the text. No text? Then this is your brief.",
+  summarize: "Optional: focus the summary (e.g. “just the action items”).",
+  explain: "Optional: focus the explanation (e.g. “explain the technical terms”).",
 };
 
 // Label + placeholder for the "your text" box, by action. Shown only in
@@ -77,6 +89,8 @@ export const SOURCE_LABELS: Record<Action, string> = {
   translate: "Text to translate",
   grammar: "Text to fix",
   rewrite: "Text to rewrite",
+  summarize: "Text to summarize",
+  explain: "Text to explain",
 };
 
 export const SOURCE_PLACEHOLDERS: Record<Action, string> = {
@@ -84,4 +98,6 @@ export const SOURCE_PLACEHOLDERS: Record<Action, string> = {
   translate: "Paste or type the customer's message to translate…",
   grammar: "Paste or type the text whose grammar you want fixed…",
   rewrite: "Paste or type the text to rewrite (or leave blank and add a brief in Options)…",
+  summarize: "Paste or type the text or thread you want summarized…",
+  explain: "Paste or type the text you want explained…",
 };

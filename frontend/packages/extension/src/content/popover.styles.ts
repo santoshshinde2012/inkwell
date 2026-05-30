@@ -62,6 +62,16 @@ export const POPOVER_STYLES = `
   .pop:focus { outline: none; }
   .pop ::selection { background: rgba(99, 102, 241, 0.22); }
 
+  /* Top section ------------------------------------------------ */
+  /* Header bar + task picker grouped into one tinted "head" zone so
+     selecting an action reads as the primary first step. The bottom
+     border lives here (not on .head) so the picker sits inside the
+     same frame as the title. */
+  .head-section {
+    background: linear-gradient(180deg, #fafafa 0%, #f4f4f7 100%);
+    border-bottom: 1px solid #e7e7ea;
+  }
+
   /* Header ----------------------------------------------------- */
   /* The header doubles as a drag handle. cursor:grab invites the
      gesture; touch-action:none keeps mobile / pen pointers from
@@ -70,8 +80,7 @@ export const POPOVER_STYLES = `
      their own pointer cursor below. */
   .head {
     display: flex; align-items: center; gap: 9px;
-    padding: 11px 14px;
-    border-bottom: 1px solid #ececef;
+    padding: 11px 14px 9px;
     cursor: grab;
     user-select: none;
     touch-action: none;
@@ -120,6 +129,10 @@ export const POPOVER_STYLES = `
   .icon-btn:hover { background: #f1f5f9; color: #0f172a; }
   .icon-btn:focus-visible { outline: 2px solid #6366f1; outline-offset: 1px; }
   .icon-btn svg { width: 14px; height: 14px; }
+  /* Active (toggled-on) state — used by the settings gear while the
+     options panel is open, so the toggle reads as "on". */
+  .icon-btn.active { background: #eef2ff; color: #4f46e5; }
+  .icon-btn.active:hover { background: #e0e7ff; color: #4338ca; }
 
   /* Body ------------------------------------------------------- */
   .body {
@@ -127,43 +140,52 @@ export const POPOVER_STYLES = `
     overflow: auto;
   }
 
-  /* Action segmented control */
+  /* Task picker — a compact single-row segmented bar in the top section.
+     The selected action grows to show its label; the others collapse to
+     icon-only (their name comes from aria-label + the title tooltip), so
+     the whole control stays one slim row and frees height for the text
+     and result areas below. */
+  .action-picker {
+    padding: 0 14px 10px;
+  }
   .actions {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px;
-    padding: 4px;
-    background: #f4f4f5; border-radius: 10px;
-    margin-bottom: 12px;
+    display: flex; gap: 2px;
+    padding: 3px;
+    background: #ededf0; border-radius: 10px;
   }
   .action {
     appearance: none; border: 0;
+    flex: 1 1 0; min-width: 0;
     display: inline-flex; align-items: center; justify-content: center;
     gap: 5px;
-    padding: 7px 4px; border-radius: 7px;
+    height: 32px; padding: 0 6px; border-radius: 7px;
     background: transparent; color: #52525b;
     font-family: var(--inkwell-font);
-    font-size: 11.5px; font-weight: 500; line-height: 1;
+    font-size: 12px; font-weight: 550; line-height: 1;
     white-space: nowrap; overflow: hidden;
     cursor: pointer;
-    transition: background 120ms, color 120ms, box-shadow 120ms;
+    transition: flex-grow 220ms cubic-bezier(.4,0,.2,1),
+      background 120ms, color 120ms, box-shadow 120ms;
   }
-  .action:hover { color: #18181b; }
+  .action .action-label { display: none; }
+  .action:not([aria-selected="true"]):hover { color: #18181b; }
   .action[aria-selected="true"] {
+    flex-grow: 2.4;
     background: #ffffff; color: #4f46e5;
-    box-shadow:
-      0 1px 3px rgba(0,0,0,0.10),
-      0 0 0 1px rgba(0,0,0,0.03);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.10), 0 0 0 1px rgba(0,0,0,0.03);
   }
-  .action svg { width: 13px; height: 13px; }
+  .action[aria-selected="true"] .action-label { display: inline; }
+  .action svg { width: 15px; height: 15px; flex-shrink: 0; }
   .action:focus-visible { outline: 2px solid #6366f1; outline-offset: 1px; }
 
   .action-hint {
-    margin: 2px 2px 4px; font-size: 11px; color: #71717a; line-height: 1.45;
+    margin: 0 2px 10px; font-size: 11.5px; color: #52525b; line-height: 1.45;
   }
 
   /* "Your text" box — shown for selection / manual-entry mode */
   .source-wrap { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
   .source {
-    width: 100%; min-height: 70px; max-height: 180px;
+    width: 100%; min-height: 96px; max-height: 220px;
     padding: 8px 10px;
     border: 1px solid #e4e4e7; border-radius: 8px;
     background: #ffffff; color: #18181b;
@@ -178,68 +200,31 @@ export const POPOVER_STYLES = `
   }
   .source::placeholder { color: #a1a1aa; }
 
-  /* Options disclosure — collapses language + tone/model + instruction so
-     the popover's primary surface is text in → result out. The whole
-     disclosure is one bordered card; the toggle is its borderless header,
-     and the body slides open inside the same frame. A grid-template-rows
-     0fr → 1fr animation gives a smooth, content-aware expand without any
-     hard-coded max-height. */
-  .opts {
-    margin-bottom: 10px;
-    border: 1px solid #e4e4e7; border-radius: 10px;
-    background: #ffffff;
-    transition: border-color 160ms;
-  }
-  .opts:hover { border-color: #d4d4d8; }
-  .opts-toggle {
-    appearance: none;
-    width: 100%;
-    display: flex; align-items: center; gap: 9px;
-    padding: 10px 12px;
-    background: transparent; border: 0; border-radius: 10px;
-    color: #52525b; cursor: pointer;
-    font-family: var(--inkwell-font);
-    font-size: 12px; font-weight: 500; line-height: 1.3;
-    text-align: left;
-    transition: color 120ms;
-  }
-  .opts-toggle:hover { color: #18181b; }
-  .opts-toggle:focus-visible {
-    outline: 2px solid #6366f1; outline-offset: -2px;
-  }
-  .opts-icon, .opts-chevron {
-    display: inline-flex; align-items: center;
-    color: #a1a1aa; flex-shrink: 0;
-    transition: color 120ms;
-  }
-  .opts-icon svg, .opts-chevron svg { width: 14px; height: 14px; }
-  .opts-toggle:hover .opts-icon,
-  .opts-toggle:hover .opts-chevron { color: #71717a; }
-  .opts-text {
-    flex: 1; min-width: 0;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  .opts-chevron {
-    transition: transform 260ms cubic-bezier(.4,0,.2,1), color 120ms;
-  }
-  .opts-toggle[aria-expanded="true"] .opts-chevron { transform: rotate(180deg); }
-
+  /* Options panel — language + tone/model + instruction, toggled by the
+     header gear button. Hidden entirely when collapsed (no row, no border)
+     so the popover's primary surface is text in → result out. The
+     grid-template-rows 0fr → 1fr animation gives a smooth, content-aware
+     expand without any hard-coded max-height; the card chrome lives on
+     .opts-inner so nothing shows while collapsed. */
   .opts-body {
     display: grid;
     grid-template-rows: 0fr;
     transition: grid-template-rows 260ms cubic-bezier(.4,0,.2,1);
   }
-  .opts-toggle[aria-expanded="true"] + .opts-body {
-    grid-template-rows: 1fr;
-  }
+  .opts-body.open { grid-template-rows: 1fr; }
+  /* Card chrome (border + bottom margin) is gated on .open so a collapsed
+     panel leaves no visible line or gap. Padding stays put — it's clipped
+     to nothing by the 0-height, overflow:hidden row while closed. */
   .opts-inner {
     min-height: 0; overflow: hidden;
+    border: 1px solid transparent; border-radius: 10px;
+    background: #ffffff;
     padding: 12px 12px 2px;
-    border-top: 1px solid transparent;
-    transition: border-top-color 200ms;
+    transition: border-color 200ms;
   }
-  .opts-toggle[aria-expanded="true"] + .opts-body .opts-inner {
-    border-top-color: #ececef;
+  .opts-body.open .opts-inner {
+    border-color: #e4e4e7;
+    margin-bottom: 10px;
   }
   /* The wrapped rows already provide their own bottom margin — drop the
      final margin so the card closes flush. */
@@ -321,8 +306,8 @@ export const POPOVER_STYLES = `
     margin-top: 12px; padding: 12px;
     background: #fafafa;
     border: 1px solid #e4e4e7; border-radius: 10px;
-    min-height: 78px;
-    max-height: 240px; overflow: auto;
+    min-height: 120px;
+    max-height: 300px; overflow: auto;
     position: relative;
     transition: background 120ms, border-color 120ms;
   }
@@ -463,13 +448,18 @@ export const POPOVER_STYLES = `
         0 12px 32px -4px rgba(0,0,0,0.55),
         0 24px 56px -12px rgba(0,0,0,0.7);
     }
-    .head { border-color:#27272a; }
+    .head-section {
+      background: linear-gradient(180deg, #1d1d20 0%, #19191c 100%);
+      border-color:#27272a;
+    }
     .grip { color:#52525b; }
     .title { color:#f4f4f5; } .title-sub { color:#a1a1aa; }
     .icon-btn { color:#a1a1aa; } .icon-btn:hover { background:#27272a; color:#f4f4f5; }
+    .icon-btn.active { background:#312e81; color:#c7d2fe; }
+    .icon-btn.active:hover { background:#3730a3; color:#e0e7ff; }
     .actions { background:#27272a; }
     .action { color:#a1a1aa; }
-    .action:hover { color:#f4f4f5; }
+    .action:not([aria-selected="true"]):hover { color:#f4f4f5; }
     .action[aria-selected="true"] {
       background:#3f3f46; color:#c7d2fe;
       box-shadow: 0 1px 2px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.05);
@@ -525,16 +515,8 @@ export const POPOVER_STYLES = `
     .preview-wrap::-webkit-scrollbar-thumb:hover,
     .source::-webkit-scrollbar-thumb:hover,
     .instruction::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.30); }
-    .opts { background:#1a1a1d; border-color:#3f3f46; }
-    .opts:hover { border-color:#52525b; }
-    .opts-toggle { color:#a1a1aa; }
-    .opts-toggle:hover { color:#f4f4f5; }
-    .opts-icon, .opts-chevron { color:#71717a; }
-    .opts-toggle:hover .opts-icon,
-    .opts-toggle:hover .opts-chevron { color:#a1a1aa; }
-    .opts-toggle[aria-expanded="true"] + .opts-body .opts-inner {
-      border-top-color:#27272a;
-    }
+    .opts-inner { background:#1a1a1d; }
+    .opts-body.open .opts-inner { border-color:#3f3f46; }
   }
 
   /* Reduced motion */
@@ -543,6 +525,7 @@ export const POPOVER_STYLES = `
     .caret::after { animation: none; opacity: 1; }
     .spin svg { animation: none; }
     .thinking-dots i { animation: none; opacity: 1; }
-    .opts-body, .opts-chevron { transition: none; }
+    .opts-body { transition: none; }
+    .action { transition: none; }
   }
 `;

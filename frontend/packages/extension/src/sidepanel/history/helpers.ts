@@ -11,10 +11,19 @@ export const ACTION_LABEL: Record<Action, string> = {
   translate: "Translate",
   grammar: "Grammar",
   rewrite: "Rewrite",
+  summarize: "Summarize",
+  explain: "Explain",
 };
 
-/** All four actions in display order — used by the filter chip strip. */
-export const ACTIONS_IN_ORDER: Action[] = ["reply", "translate", "grammar", "rewrite"];
+/** All actions in display order — used by the filter chip strip. */
+export const ACTIONS_IN_ORDER: Action[] = [
+  "reply",
+  "translate",
+  "grammar",
+  "rewrite",
+  "summarize",
+  "explain",
+];
 
 /** Tailwind class tokens for the small per-action badge / chip color. */
 export const ACTION_TONE: Record<Action, { bg: string; text: string; ring: string }> = {
@@ -37,6 +46,16 @@ export const ACTION_TONE: Record<Action, { bg: string; text: string; ring: strin
     bg: "bg-amber-500/15",
     text: "text-amber-200",
     ring: "ring-amber-400/30",
+  },
+  summarize: {
+    bg: "bg-purple-500/15",
+    text: "text-purple-200",
+    ring: "ring-purple-400/30",
+  },
+  explain: {
+    bg: "bg-rose-500/15",
+    text: "text-rose-200",
+    ring: "ring-rose-400/30",
   },
 };
 

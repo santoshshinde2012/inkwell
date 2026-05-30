@@ -111,6 +111,9 @@ export const handleCompleteStream = async ({ message, target }: HandleArgs): Pro
           ? { targetLanguage: message.payload.targetLanguage }
           : {}),
         ...(message.payload.bilingual ? { bilingual: true } : {}),
+        ...(message.payload.history && message.payload.history.length > 0
+          ? { history: message.payload.history }
+          : {}),
         ...(hasProfile ? { profile } : {}),
         clientRequestId: message.streamId,
       }),

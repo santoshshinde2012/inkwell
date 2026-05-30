@@ -7,12 +7,13 @@ import { z } from "zod";
 import { ACTIONS } from "./actions";
 import { TONE_PRESETS } from "./tones";
 import { LANGUAGE_IDS, SOURCE_LANGUAGE_IDS } from "./languages";
-import { ContextSchema, SseUsagePayloadSchema } from "./schemas";
+import { ContextSchema, ConversationTurnSchema, SseUsagePayloadSchema } from "./schemas";
 import { ERROR_CODES } from "./errors";
+import { LIMITS } from "./constants";
 
 // Open-set model id — see schemas.ts for the rationale. Re-declared
 // locally so this file stays independent of schemas.ts internals.
-const ModelIdField = z.string().min(1).max(120);
+const ModelIdField = z.string().min(1).max(LIMITS.MAX_MODEL_ID_CHARS);
 
 // Each message is discriminated on `type`. Background routes by `type` and
 // validates the rest of the payload via the matching schema.
@@ -77,6 +78,9 @@ export const CompleteStartMessageSchema = z.object({
     sourceLanguage: z.enum(SOURCE_LANGUAGE_IDS).optional(),
     targetLanguage: z.enum(LANGUAGE_IDS).optional(),
     bilingual: z.boolean().optional(),
+    // Prior turns replayed for conversational refinement; forwarded
+    // verbatim to /api/v1/complete. See ConversationTurnSchema.
+    history: z.array(ConversationTurnSchema).max(LIMITS.MAX_HISTORY_TURNS).optional(),
   }),
 });
 export type CompleteStartMessage = z.infer<typeof CompleteStartMessageSchema>;

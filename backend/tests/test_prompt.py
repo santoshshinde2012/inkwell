@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import pytest
+from pydantic import ValidationError
+
 from inkwell_backend.domain.actions import Action
 from inkwell_backend.domain.schemas import CompleteRequest, Post, RequestContext
 from inkwell_backend.domain.tones import TonePreset
@@ -81,3 +84,61 @@ def test_rewrite_compose_mode_when_only_instruction_supplied() -> None:
     # Compose-mode system prompt mentions "write a piece of text".
     assert "write a piece of text" in prompt.system.lower()
     assert "Saturday" in prompt.user
+
+
+def test_summarize_wraps_context_and_does_not_reply() -> None:
+    req = CompleteRequest.model_validate(
+        {
+            "action": Action.SUMMARIZE,
+            "context": {"post": {"text": "Long update about the Q3 roadmap and three blockers."}},
+        }
+    )
+    prompt = build_prompt(req)
+    assert "summarize" in prompt.system.lower()
+    assert "<UNTRUSTED_CONTEXT>" in prompt.user
+    assert "Q3 roadmap" in prompt.user
+
+
+def test_explain_uses_draft_when_no_page_context() -> None:
+    req = CompleteRequest.model_validate(
+        {
+            "action": Action.EXPLAIN,
+            "context": {"draft": "Per my last email, kindly expedite the EOD deliverable."},
+        }
+    )
+    prompt = build_prompt(req)
+    assert "explain" in prompt.system.lower()
+    assert "EOD deliverable" in prompt.user
+
+
+@pytest.mark.parametrize("action", [Action.SUMMARIZE, Action.EXPLAIN])
+def test_summarize_explain_require_content(action: Action) -> None:
+    with pytest.raises(ValidationError):
+        CompleteRequest.model_validate({"action": action, "context": {}})
+
+
+def test_refinement_history_appended_to_user_message() -> None:
+    req = CompleteRequest.model_validate(
+        {
+            "action": Action.REPLY,
+            "context": {"post": {"text": "Can you join the call tomorrow?"}},
+            "instruction": "make it shorter",
+            "history": [
+                {
+                    "role": "assistant",
+                    "text": "Absolutely — I'd be glad to join the call tomorrow.",
+                },
+            ],
+        }
+    )
+    prompt = build_prompt(req)
+    assert "Earlier in this conversation" in prompt.user
+    assert "glad to join the call" in prompt.user
+    assert "revised text" in prompt.user.lower()
+    # The current instruction still rides on the task message.
+    assert "make it shorter" in prompt.user
+
+
+def test_no_history_leaves_user_message_unchanged() -> None:
+    base = build_prompt(_reply_request())
+    assert "Earlier in this conversation" not in base.user

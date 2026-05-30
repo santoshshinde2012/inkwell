@@ -403,9 +403,7 @@ async function canvasToBlob(
   if ("convertToBlob" in canvas) {
     // OffscreenCanvas.convertToBlob ignores `quality` for non-JPEG/WebP
     // types, so passing it unconditionally is safe.
-    return canvas.convertToBlob(
-      quality === undefined ? { type } : { type, quality },
-    );
+    return canvas.convertToBlob(quality === undefined ? { type } : { type, quality });
   }
   return await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(

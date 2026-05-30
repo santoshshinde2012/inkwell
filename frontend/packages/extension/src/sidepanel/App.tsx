@@ -35,12 +35,8 @@ const PROBE_MIN_INTERVAL_MS = 30_000;
 // Code-split the non-default views so they don't ship in the panel's
 // first-paint bundle. Both export their view as a named symbol; the
 // `.then` shape adapts them for React.lazy's default-only contract.
-const HistoryView = lazy(() =>
-  import("./history").then((m) => ({ default: m.HistoryView })),
-);
-const SettingsView = lazy(() =>
-  import("./settings").then((m) => ({ default: m.SettingsView })),
-);
+const HistoryView = lazy(() => import("./history").then((m) => ({ default: m.HistoryView })));
+const SettingsView = lazy(() => import("./settings").then((m) => ({ default: m.SettingsView })));
 
 export function App(): JSX.Element {
   const [view, setView] = useState<SidePanelView>("assistant");
@@ -77,11 +73,7 @@ export function App(): JSX.Element {
     };
 
     const hydrate = async (): Promise<void> => {
-      const [v, items] = await Promise.all([
-        loadLastView(),
-        historyStore.list(),
-        probe(false),
-      ]);
+      const [v, items] = await Promise.all([loadLastView(), historyStore.list(), probe(false)]);
       if (cancelled) return;
       setView(v);
       setHistoryCount(items.length);

@@ -161,8 +161,7 @@ function ToastViewport({
 }
 
 const KIND_STYLES: Record<ToastKind, string> = {
-  success:
-    "border-emerald-500/40 bg-emerald-500/10 text-emerald-100 [&_.dot]:bg-emerald-400",
+  success: "border-emerald-500/40 bg-emerald-500/10 text-emerald-100 [&_.dot]:bg-emerald-400",
   error: "border-red-500/40 bg-red-500/10 text-red-100 [&_.dot]:bg-red-400",
   info: "border-indigo-500/40 bg-indigo-500/10 text-indigo-100 [&_.dot]:bg-indigo-400",
 };
@@ -180,7 +179,11 @@ function ToastCard({
     >
       <style>{TOAST_KEYFRAMES}</style>
       <span aria-hidden="true" className="flex h-5 w-5 items-center justify-center">
-        {record.kind === "success" ? <CheckIcon size={14} /> : <span className="dot h-2 w-2 rounded-full" />}
+        {record.kind === "success" ? (
+          <CheckIcon size={14} />
+        ) : (
+          <span className="dot h-2 w-2 rounded-full" />
+        )}
       </span>
       <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{record.message}</span>
       <button

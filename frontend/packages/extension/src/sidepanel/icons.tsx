@@ -89,6 +89,26 @@ export function RewriteIcon(p: IconProps): JSX.Element {
   );
 }
 
+export function SummarizeIcon(p: IconProps): JSX.Element {
+  return (
+    <svg {...svg(p)}>
+      <path d="M21 6H3" />
+      <path d="M17 12H3" />
+      <path d="M13 18H3" />
+    </svg>
+  );
+}
+
+export function ExplainIcon(p: IconProps): JSX.Element {
+  return (
+    <svg {...svg(p)}>
+      <path d="M9 18h6" />
+      <path d="M10 22h4" />
+      <path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V18h6v-1.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2Z" />
+    </svg>
+  );
+}
+
 export function SlidersIcon(p: IconProps): JSX.Element {
   return (
     <svg {...svg(p)}>

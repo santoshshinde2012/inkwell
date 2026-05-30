@@ -25,10 +25,12 @@ import {
   CheckIcon,
   ChevronDownIcon,
   CopyIcon,
+  ExplainIcon,
   ExternalLinkIcon,
   GrammarIcon,
   ReplyIcon,
   RewriteIcon,
+  SummarizeIcon,
   TranslateIcon,
   TrashIcon,
 } from "../icons";
@@ -39,6 +41,8 @@ const ACTION_ICON: Record<Action, (p: { size?: number }) => JSX.Element> = {
   translate: TranslateIcon,
   grammar: GrammarIcon,
   rewrite: RewriteIcon,
+  summarize: SummarizeIcon,
+  explain: ExplainIcon,
 };
 
 export interface RowProps {

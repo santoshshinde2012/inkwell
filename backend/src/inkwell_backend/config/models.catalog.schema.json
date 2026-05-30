@@ -25,8 +25,8 @@
           "id": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 120,
-            "description": "Stable id sent in API requests and stored in extension settings."
+            "maxLength": 200,
+            "description": "Stable id sent in API requests and stored in extension settings. Supports Portkey model-catalog slugs (e.g. @integration/model)."
           },
           "label": {
             "type": "string",

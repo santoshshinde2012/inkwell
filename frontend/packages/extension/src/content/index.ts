@@ -27,6 +27,7 @@ import { hideOcrLoader, showOcrLoader, wasOcrLoaderDismissed } from "./ocr-loade
 import { isPopoverActive, mountTrigger, removeTrigger } from "./trigger";
 import { selectAdapter, type SiteAdapter } from "./adapters";
 import { isEditable } from "./editable";
+import { extractPageMeta } from "./page-meta";
 
 const FOCUS_DEBOUNCE_MS = 50;
 // Selecting text fires a burst of events (drag, shift+arrow); wait for it
@@ -262,6 +263,15 @@ const init = async (): Promise<void> => {
       const text = inOurUi ? "" : raw.trim();
       const source: "field" | "page" = anchorEl && isInEditableHost(anchorEl) ? "field" : "page";
       sendResponse({ text, source });
+      return false;
+    }
+    if (t === "GET_PAGE_META") {
+      // The side panel asks the active tab for its declared page metadata
+      // (site name, description, article info, …) so its completions are
+      // grounded in the current site — same data the in-page adapters
+      // attach. Only metadata the page advertises about itself; never
+      // scraped body content.
+      sendResponse({ meta: extractPageMeta() });
       return false;
     }
     return false;

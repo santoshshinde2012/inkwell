@@ -8,6 +8,59 @@ uses semantic versioning.
 
 ### Added
 
+- **Vendor-agnostic Portkey gateway routing.** `USE_PORTKEY=true` can now
+  route to any upstream Portkey supports — not just OpenAI. The
+  hardcoded `x-portkey-provider: openai` header is replaced by an
+  optional `PORTKEY_PROVIDER` env var (sent only when set), so a request
+  `model` like `@bedrock-use1/us.anthropic.claude-...` (a Portkey
+  model-catalog slug) routes itself, and a `PORTKEY_VIRTUAL_KEY` pins the
+  upstream via the vault. To support this the request schema
+  ([`schemas.py`](backend/src/inkwell_backend/domain/schemas.py)) now
+  accepts non-catalog model ids when the gateway is on (charset/length
+  still bounded) while staying strict for direct OpenAI, and `has_openai`
+  reports the gateway as reachable whenever the project key is present —
+  so model-catalog requests hit the gateway instead of falling back to
+  the mock. Blank `PORTKEY_*` optionals normalise to unset so an empty
+  `.env` value can't leak a bogus header. Direct OpenAI
+  (`USE_PORTKEY=false`) is unchanged. See
+  [`openai_client.py`](backend/src/inkwell_backend/providers/openai_client.py)
+  and [`settings.py`](backend/src/inkwell_backend/settings.py).
+- **Richer page-context understanding.** Every request now carries the
+  active page's *declared* metadata — site name, page type, description,
+  article author / section / published date, language, and the main
+  heading — pulled from Open Graph / `<meta>` / JSON-LD / `<h1>` by a new
+  [`page-meta.ts`](frontend/packages/extension/src/content/page-meta.ts)
+  extractor. The generic adapter (every site without a dedicated adapter)
+  and the in-page selection popover attach it, and the side panel fetches
+  it from the active tab via a `GET_PAGE_META` content-script message, so
+  replies, rewrites, summaries, and explanations are grounded in *what
+  kind of page* the user is on (support docs vs. forum vs. news article).
+  Only metadata the page advertises about itself is read — never scraped
+  body content — and because it's page-derived it's sanitized and scanned
+  for prompt-injection red-flags in
+  [`sanitizer.py`](backend/src/inkwell_backend/services/sanitizer.py) the
+  same way `thread`/`post` are.
+- **Two new actions: Summarize and Explain.** `summarize` condenses a
+  thread, draft, or page into a short, faithful summary; `explain`
+  clarifies what a piece of text means in plain language (jargon,
+  acronyms, intent). Both flow through the existing action-strategy
+  registry
+  ([backend/src/inkwell_backend/services/prompt.py](backend/src/inkwell_backend/services/prompt.py)),
+  honour `targetLanguage` (e.g. "explain in French"), and require text
+  (`context.draft` or page context). They're wired across every Action
+  surface — the in-page popover, the side-panel picker (now a 3-column
+  grid), Options, and History — with their own purple / rose theming.
+- **Conversational refinement (multi-turn).** `/api/v1/complete` accepts
+  an optional `history` array (≤ 12 turns of `{ role, text }`,
+  `user`/`assistant` only). The prompt builder replays it as a
+  transcript and instructs the model to revise its most recent draft
+  per the current `instruction`, so follow-ups like "make it shorter"
+  iterate on the existing output instead of regenerating from scratch.
+  The side-panel result card gains a **Refine** bar — one-tap chips
+  (Shorter / Longer / Formal / Friendlier / Simpler) plus a free-text
+  follow-up — that tracks the conversation client-side and resets on a
+  fresh generation or action switch. New caps live in
+  [`MAX_HISTORY_TURNS` / `MAX_HISTORY_TURN_CHARS`](frontend/packages/shared/src/constants.ts).
 - **`/api/v1/ocr` content-negotiates streaming.** Clients sending
   `Accept: text/event-stream` get an SSE byte stream of `token` /
   `error` / `done` frames (with `: keep-alive` heartbeats every 15 s);

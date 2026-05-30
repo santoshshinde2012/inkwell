@@ -25,8 +25,10 @@ export const orderLanguages = (frequent: LanguageId[]): LanguageId[] => {
 };
 
 /**
- * Build the target picker's options. Grammar has no "to" choice; reply and
- * rewrite have action-specific sentinels in addition to the language list.
+ * Build the target picker's options. Grammar has no "to" choice; reply has
+ * action-specific sentinels; rewrite / summarize / explain offer "keep
+ * source language" plus the full language list (so a user can ask for the
+ * output in a specific language). Translate is a plain language list.
  */
 export const buildTargetOptions = (
   action: Action,
@@ -47,6 +49,8 @@ export const buildTargetOptions = (
       },
       ...langs,
     ];
-  if (action === "rewrite") return [{ value: "match", label: "Keep source language" }, ...langs];
+  if (action === "rewrite" || action === "summarize" || action === "explain")
+    return [{ value: "match", label: "Keep source language" }, ...langs];
+  // grammar — no target language choice.
   return [];
 };

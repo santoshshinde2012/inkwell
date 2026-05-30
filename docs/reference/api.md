@@ -145,7 +145,7 @@ Streaming completion. Returns `text/event-stream`.
 
 ```jsonc
 {
-  "action": "reply" | "grammar" | "rewrite" | "translate",
+  "action": "reply" | "grammar" | "rewrite" | "translate" | "summarize" | "explain",
   "context": {
     "site": "string?",
     "pageTitle": "string?",
@@ -153,6 +153,10 @@ Streaming completion. Returns `text/event-stream`.
     "thread": [{ "author": "string?", "text": "string", "timestamp": "string?" }],
     "post": { "author": "string?", "text": "string" },
     "draft": "string?",
+    // Page-derived metadata the extension scrapes from the active page's
+    // *declared* sources (Open Graph / <meta> / JSON-LD / <h1>), e.g.
+    // siteName, pageType, description, author, section, published,
+    // pageLanguage, heading. Free-form bag; treated as untrusted context.
     "meta": { "key": "value" }
   },
   "tone": "professional" | "friendly" | "concise" | "detailed",
@@ -162,6 +166,11 @@ Streaming completion. Returns `text/event-stream`.
   "sourceLanguage": "auto" | "<catalog language id>",  // e.g. "fr", "zh-Hans"
   "targetLanguage": "<catalog language id>?",          // output language
   "bilingual": "boolean?",                             // reply in both languages
+  // Conversational refinement: prior turns replayed so a follow-up
+  // ("make it shorter") revises the assistant's previous draft instead
+  // of regenerating. Omitted on the first request. ≤ 12 turns; `role`
+  // is "user" | "assistant" only (no client-supplied "system").
+  "history": [{ "role": "user" | "assistant", "text": "string" }],
   // Optional personalization, sourced from chrome.storage.local by the
   // extension. Never persisted server-side.
   "profile": { "displayName": "string?", "aboutMe": "string?" },
@@ -178,6 +187,12 @@ Validation lives in
   `targetLanguage`.
 - `rewrite` requires at least one of `context.draft`, `instruction`, or
   page context — see [three-rewrite-modes.md](../explanation/three-rewrite-modes.md).
+- `summarize` and `explain` require text (`context.draft` or page
+  context). They honour `targetLanguage` (e.g. "explain in French") and
+  fall back to the source language when it's omitted.
+- `history`, if present, holds ≤ 12 prior turns (each ≤ 8 000 chars).
+  The prompt builder renders them as a transcript and instructs the
+  model to revise its most recent draft per the current `instruction`.
 - `model`, if present, must be an id in the shared model catalog;
   unknown ids are rejected. When omitted, the backend uses
   `DEFAULT_MODEL` (legacy `OPENAI_DEFAULT_MODEL` is still accepted)
@@ -188,6 +203,11 @@ Validation lives in
   shared language catalog (`sourceLanguage` also accepts `"auto"`).
   `sourceLanguage` is a hint — the model still detects the language from
   the text. See [multilingual-support.md](../explanation/multilingual-support.md).
+- `context.meta` is page-derived (scraped from the active page's Open
+  Graph / `<meta>` / JSON-LD / `<h1>`), so it's untrusted: every value is
+  capped at 500 chars, sanitized, and scanned for prompt-injection
+  red-flags alongside `thread`/`post`. See
+  [backend/src/inkwell_backend/services/sanitizer.py](../../backend/src/inkwell_backend/services/sanitizer.py).
 - Unknown top-level fields are rejected (`extra="forbid"`).
 - Body ≤ 32 KB (header pre-check rejects with 413 before the body is
   parsed).

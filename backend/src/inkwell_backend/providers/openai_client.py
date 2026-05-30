@@ -60,12 +60,6 @@ if TYPE_CHECKING:
 # Constants
 # ---------------------------------------------------------------------------
 
-# Portkey-side provider slug. Sent in the ``x-portkey-provider`` header
-# so the gateway knows which upstream to route to. Constant here because
-# this file only constructs OpenAI clients; a future Anthropic adapter
-# would carry its own slug.
-_PORTKEY_PROVIDER_SLUG: str = "openai"
-
 # Placeholder ``api_key`` handed to the SDK when authentication happens
 # via a Portkey virtual key — the OpenAI SDK refuses an empty key, and
 # the gateway strips this Authorization header before forwarding. Using
@@ -113,12 +107,16 @@ def _portkey_overrides(vendor_api_key: str | None) -> tuple[str, str, Mapping[st
     from portkey_ai import createHeaders
 
     # ``createHeaders`` accepts only keyword arguments and skips entries
-    # whose value is None, so we can pass every optional field directly.
+    # whose value is None, so we pass every optional field directly and
+    # let it omit the unset ones. ``provider`` is intentionally optional:
+    # when None (the default) no ``x-portkey-provider`` header is sent,
+    # so a model-catalog slug (``@integration/model``) or virtual key
+    # drives routing to any upstream — OpenAI, Anthropic, Bedrock, ….
     # The SDK ships without type stubs for this helper — silence the
     # untyped-call warning rather than wrap the whole module.
     headers: Mapping[str, str] = createHeaders(  # type: ignore[no-untyped-call]
         api_key=settings.portkey_api_key,
-        provider=_PORTKEY_PROVIDER_SLUG,
+        provider=settings.portkey_provider,
         virtual_key=settings.portkey_virtual_key,
         config=settings.portkey_config,
     )
